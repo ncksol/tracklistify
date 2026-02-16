@@ -89,7 +89,7 @@ async def identify_segment(audio_path: str) -> dict[str, Any] | None:
             await asyncio.sleep(2**attempt)
 
     # Parse response
-    if result.get("status", {}).get("code") != 0:
+    if result is None or result.get("status", {}).get("code") != 0:
         return None
 
     metadata = result.get("metadata", {})

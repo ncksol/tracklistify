@@ -4,7 +4,7 @@ import contextlib
 import os
 from pathlib import Path
 
-import aiofiles
+import aiofiles  # type: ignore[import-untyped]
 from azure.storage.blob.aio import BlobServiceClient
 from dotenv import load_dotenv
 
@@ -33,7 +33,7 @@ def _get_blob_service_client() -> BlobServiceClient:
     if not _is_storage_configured():
         raise ValueError("AZURE_STORAGE_CONNECTION_STRING environment variable is not set")
 
-    return BlobServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)
+    return BlobServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)  # type: ignore[arg-type]
 
 
 async def upload_audio(job_id: str, file_path: str) -> str:
