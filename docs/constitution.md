@@ -68,6 +68,16 @@ README that explains how to run the project in under 2 minutes. Inline comments 
 - Comments explain WHY a non-obvious decision was made
 - API contracts (OpenAPI/GraphQL schema) serve as the API documentation — no separate API docs
 
+## Cloud & Infrastructure
+
+### VIII. Azure, UK South First
+All deployments on Azure. Default region: **UK South**. Fallback: **Sweden Central** (only when required services aren't available in UK South, e.g., certain ML/AI services).
+
+**Gates:**
+- No AWS, GCP, or other cloud providers without explicit justification
+- Every resource defaults to `uksouth` — only use `swedencentral` if the service genuinely isn't available in UK South
+- Document region exceptions in plan.md when Sweden is used
+
 ## Development Workflow
 
 ### Solo Developer Process
