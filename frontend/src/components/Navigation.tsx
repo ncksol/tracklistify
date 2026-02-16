@@ -14,11 +14,15 @@ export default function Navigation() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center space-x-8">
-            <Link
-              href="/"
-              className="flex items-center gap-2 transition-opacity hover:opacity-80"
-            >
-              <Image src="/logo-icon.png" alt="" width={32} height={32} unoptimized className="rounded" />
+            <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-80">
+              <Image
+                src="/logo-icon.png"
+                alt=""
+                width={32}
+                height={32}
+                unoptimized
+                className="rounded"
+              />
               <span className="text-lg font-semibold text-sand">Tracklistify</span>
             </Link>
             <Link

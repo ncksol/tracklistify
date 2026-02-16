@@ -21,7 +21,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install -r backend/requirements.txt
+        run: pip install -r backend/requirements.txt ruff mypy pytest
 
       - name: Run ruff check
         run: ruff check backend/app/

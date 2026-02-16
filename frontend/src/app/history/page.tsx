@@ -173,7 +173,7 @@ export default function HistoryPage() {
     <div className="min-h-screen bg-brick-light py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold text-carbon mb-8">Processing History</h1>
-        
+
         <div className="bg-sand-light border border-brick rounded-lg shadow-sm overflow-hidden">
           <ul className="divide-y divide-brick">
             {jobs.map((job) => {
@@ -194,7 +194,7 @@ export default function HistoryPage() {
                           {badge.text}
                         </span>
                       </div>
-                      
+
                       <div className="flex items-center gap-4 text-sm text-carbon/70">
                         <span className="flex items-center">
                           <svg
@@ -212,18 +212,14 @@ export default function HistoryPage() {
                           </svg>
                           {formatDate(job.created_at)}
                         </span>
-                        
+
                         {job.duration_seconds && (
-                          <span>
-                            {Math.floor(job.duration_seconds / 60)} min
-                          </span>
+                          <span>{Math.floor(job.duration_seconds / 60)} min</span>
                         )}
                       </div>
 
                       {job.error_message && (
-                        <p className="mt-2 text-sm text-danger">
-                          Error: {job.error_message}
-                        </p>
+                        <p className="mt-2 text-sm text-danger">Error: {job.error_message}</p>
                       )}
                     </div>
 
@@ -241,8 +237,18 @@ export default function HistoryPage() {
                             </>
                           ) : (
                             <>
-                              <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              <svg
+                                className="mr-2 h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                />
                               </svg>
                               Reanalyse
                             </>
@@ -275,8 +281,18 @@ export default function HistoryPage() {
                         className="inline-flex items-center px-4 py-2 border border-danger/30 text-sm font-medium rounded-md text-danger bg-sand-light hover:bg-danger-light transition-colors"
                         title="Delete"
                       >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          />
                         </svg>
                       </button>
                     </div>

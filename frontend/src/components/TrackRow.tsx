@@ -52,11 +52,11 @@ function getConfidenceBadgeClasses(score: number | null): string {
  */
 function parseTimestamp(timestamp: string): number | null {
   const parts = timestamp.split(':').map(Number);
-  
+
   if (parts.some(isNaN)) {
     return null;
   }
-  
+
   if (parts.length === 2) {
     // MM:SS
     const minutes = parts[0];
@@ -75,13 +75,13 @@ function parseTimestamp(timestamp: string): number | null {
     }
     return (hours * 3600 + minutes * 60 + seconds) * 1000;
   }
-  
+
   return null;
 }
 
 /**
  * TrackRow Component
- * 
+ *
  * Displays a single track in the tracklist with position, timestamp, title/artist,
  * confidence score, and transition indicator. Supports inline editing and deletion.
  */
@@ -89,12 +89,12 @@ export default function TrackRow({ track, onUpdate, onDelete, onClick }: TrackRo
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  
+
   // Edit form state
   const [editArtist, setEditArtist] = useState(track.artist || '');
   const [editTitle, setEditTitle] = useState(track.title || '');
   const [editStartTime, setEditStartTime] = useState(formatTimestamp(track.start_time_ms));
-  
+
   const isUnidentified = !track.title && !track.artist;
   const displayText = isUnidentified
     ? 'Unidentified'
@@ -118,23 +118,23 @@ export default function TrackRow({ track, onUpdate, onDelete, onClick }: TrackRo
     }
 
     const startTimeMs = parseTimestamp(editStartTime);
-    
+
     if (startTimeMs === null) {
       alert('Invalid time format. Use MM:SS or HH:MM:SS');
       return;
     }
 
     setIsLoading(true);
-    
+
     try {
       const updatedTrack = await updateTrack(track.job_id, track.id, {
         artist: editArtist || null,
         title: editTitle || null,
         start_time_ms: startTimeMs,
       });
-      
+
       setIsEditing(false);
-      
+
       if (onUpdate) {
         onUpdate(updatedTrack);
       }
@@ -161,10 +161,10 @@ export default function TrackRow({ track, onUpdate, onDelete, onClick }: TrackRo
     }
 
     setIsLoading(true);
-    
+
     try {
       await deleteTrack(track.job_id, track.id);
-      
+
       if (onDelete) {
         onDelete(track.id);
       }
@@ -248,7 +248,9 @@ export default function TrackRow({ track, onUpdate, onDelete, onClick }: TrackRo
           </button>
 
           {/* Track Info */}
-          <div className={`flex-grow min-w-0 text-sm ${isUnidentified ? 'text-carbon/60 italic' : 'text-carbon'}`}>
+          <div
+            className={`flex-grow min-w-0 text-sm ${isUnidentified ? 'text-carbon/60 italic' : 'text-carbon'}`}
+          >
             <span className="truncate">{displayText}</span>
           </div>
 
@@ -276,7 +278,7 @@ export default function TrackRow({ track, onUpdate, onDelete, onClick }: TrackRo
             >
               Edit
             </button>
-            
+
             {isDeleting ? (
               <>
                 <button

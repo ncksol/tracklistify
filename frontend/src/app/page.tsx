@@ -14,9 +14,7 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-b from-brick-light to-white py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-carbon mb-3">
-            Tracklistify
-          </h1>
+          <h1 className="text-4xl font-bold text-carbon mb-3">Tracklistify</h1>
           <p className="text-xl text-carbon/70">
             Turn DJ sets into tracklists using audio fingerprinting
           </p>

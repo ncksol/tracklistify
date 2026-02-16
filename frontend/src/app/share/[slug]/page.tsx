@@ -11,7 +11,7 @@ interface SharePageProps {
   }>;
 }
 
-type PageState = 
+type PageState =
   | { type: 'loading' }
   | { type: 'complete'; tracklist: Tracklist }
   | { type: 'not_found' }
@@ -82,15 +82,13 @@ export default function SharePage({ params }: SharePageProps) {
                 </svg>
               </div>
             </div>
-            
-            <h1 className="text-2xl font-bold text-center text-carbon mb-4">
-              Tracklist Not Found
-            </h1>
-            
+
+            <h1 className="text-2xl font-bold text-center text-carbon mb-4">Tracklist Not Found</h1>
+
             <p className="text-center text-carbon/70 mb-6">
-              The shared tracklist you're looking for doesn't exist or has been removed.
+              The shared tracklist you&apos;re looking for doesn&apos;t exist or has been removed.
             </p>
-            
+
             <div className="flex justify-center">
               <Link
                 href="/"
@@ -128,15 +126,13 @@ export default function SharePage({ params }: SharePageProps) {
                 </svg>
               </div>
             </div>
-            
+
             <h1 className="text-2xl font-bold text-center text-carbon mb-4">
               Error Loading Tracklist
             </h1>
-            
-            <p className="text-center text-carbon/70 mb-6">
-              {state.message}
-            </p>
-            
+
+            <p className="text-center text-carbon/70 mb-6">{state.message}</p>
+
             <div className="flex justify-center">
               <Link
                 href="/"
@@ -179,11 +175,9 @@ export default function SharePage({ params }: SharePageProps) {
                 Shared Tracklist
               </h2>
             </div>
-            
-            <h1 className="text-3xl font-bold text-carbon mb-4">
-              DJ Set Tracklist
-            </h1>
-            
+
+            <h1 className="text-3xl font-bold text-carbon mb-4">DJ Set Tracklist</h1>
+
             <div className="flex items-center gap-2 text-sm text-carbon/70">
               <svg
                 className="h-5 w-5 text-carbon/50"
@@ -198,10 +192,12 @@ export default function SharePage({ params }: SharePageProps) {
                   d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
                 />
               </svg>
-              <span>{trackCount} {trackCount === 1 ? 'track' : 'tracks'} identified</span>
+              <span>
+                {trackCount} {trackCount === 1 ? 'track' : 'tracks'} identified
+              </span>
             </div>
           </div>
-          
+
           <div className="pt-6 border-t border-brick">
             <Link
               href="/"

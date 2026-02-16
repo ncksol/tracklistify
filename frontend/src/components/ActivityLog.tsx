@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 
 interface JobEvent {
   id: string;
-  timestamp: string;  // ISO 8601
+  timestamp: string; // ISO 8601
   message: string;
   phase: string;
   progress: number;
@@ -12,7 +12,7 @@ interface JobEvent {
 
 interface ActivityLogProps {
   events: JobEvent[];
-  startTime: string;  // ISO timestamp of when job started, for relative time calc
+  startTime: string; // ISO timestamp of when job started, for relative time calc
 }
 
 /**
@@ -47,9 +47,7 @@ export function ActivityLog({ events, startTime }: ActivityLogProps) {
   return (
     <div>
       {/* Header */}
-      <div className="text-sm font-medium text-gray-500 mb-2">
-        Activity Log
-      </div>
+      <div className="text-sm font-medium text-gray-500 mb-2">Activity Log</div>
 
       {/* Scrollable event container */}
       <div
@@ -57,9 +55,7 @@ export function ActivityLog({ events, startTime }: ActivityLogProps) {
         className="max-h-[300px] overflow-y-auto bg-carbon rounded-lg border border-carbon p-4"
       >
         {events.length === 0 ? (
-          <div className="text-sm italic text-gray-400">
-            Waiting for events...
-          </div>
+          <div className="text-sm italic text-gray-400">Waiting for events...</div>
         ) : (
           events.map((event, index) => {
             const previousEvent = index > 0 ? events[index - 1] : null;
@@ -68,10 +64,8 @@ export function ActivityLog({ events, startTime }: ActivityLogProps) {
             return (
               <div key={event.id}>
                 {/* Phase separator */}
-                {isNewPhase && (
-                  <div className="border-t border-carbon my-2" />
-                )}
-                
+                {isNewPhase && <div className="border-t border-carbon my-2" />}
+
                 {/* Event entry */}
                 <div className="text-sm font-mono text-saffron">
                   <span className="text-saffron inline-block w-16 text-right mr-3">

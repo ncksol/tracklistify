@@ -14,14 +14,14 @@ interface WaveformTimelineProps {
 
 // Generate distinct colors for tracks
 const TRACK_COLORS = [
-  'rgba(59, 130, 246, 0.5)',  // blue
-  'rgba(16, 185, 129, 0.5)',  // green
-  'rgba(245, 158, 11, 0.5)',  // amber
-  'rgba(239, 68, 68, 0.5)',   // red
-  'rgba(168, 85, 247, 0.5)',  // purple
-  'rgba(236, 72, 153, 0.5)',  // pink
-  'rgba(14, 165, 233, 0.5)',  // sky
-  'rgba(34, 197, 94, 0.5)',   // emerald
+  'rgba(59, 130, 246, 0.5)', // blue
+  'rgba(16, 185, 129, 0.5)', // green
+  'rgba(245, 158, 11, 0.5)', // amber
+  'rgba(239, 68, 68, 0.5)', // red
+  'rgba(168, 85, 247, 0.5)', // purple
+  'rgba(236, 72, 153, 0.5)', // pink
+  'rgba(14, 165, 233, 0.5)', // sky
+  'rgba(34, 197, 94, 0.5)', // emerald
 ];
 
 const UNIDENTIFIED_COLOR = 'rgba(156, 163, 175, 0.3)'; // grey
@@ -78,7 +78,7 @@ export default function WaveformTimeline({
         region.on('update-end', () => {
           applyHatchedPattern(region.element);
         });
-        
+
         // Apply pattern immediately after creation
         setTimeout(() => {
           applyHatchedPattern(region.element);
@@ -88,7 +88,9 @@ export default function WaveformTimeline({
       // Add regions for identified tracks
       tracks.forEach((track, index) => {
         const startTime = track.start_time_ms / 1000;
-        const endTime = track.end_time_ms ? track.end_time_ms / 1000 : waveformData.duration_seconds;
+        const endTime = track.end_time_ms
+          ? track.end_time_ms / 1000
+          : waveformData.duration_seconds;
         const color = TRACK_COLORS[index % TRACK_COLORS.length];
 
         const region = regions.addRegion({
@@ -140,13 +142,14 @@ function createTrackLabel(track: Track): HTMLElement {
     text-overflow: ellipsis;
     max-width: calc(100% - 8px);
   `;
-  
-  const trackName = track.artist && track.title 
-    ? `${track.artist} - ${track.title}`
-    : track.title || track.artist || `Track ${track.position}`;
-  
+
+  const trackName =
+    track.artist && track.title
+      ? `${track.artist} - ${track.title}`
+      : track.title || track.artist || `Track ${track.position}`;
+
   label.textContent = trackName;
-  
+
   return label;
 }
 
@@ -168,9 +171,9 @@ function createUnidentifiedLabel(): HTMLElement {
     text-overflow: ellipsis;
     max-width: calc(100% - 8px);
   `;
-  
+
   label.textContent = 'Unidentified';
-  
+
   return label;
 }
 
@@ -179,7 +182,7 @@ function createUnidentifiedLabel(): HTMLElement {
  */
 function applyHatchedPattern(element: HTMLElement | null): void {
   if (!element) return;
-  
+
   // Create a striped pattern using CSS linear gradient
   element.style.backgroundImage = `
     repeating-linear-gradient(

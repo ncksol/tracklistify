@@ -32,9 +32,7 @@ export function ExportMenu({ jobId }: ExportMenuProps) {
 
   const handleExport = async (format: 'text' | 'json') => {
     try {
-      const response = await fetch(
-        `${apiUrl}/api/jobs/${jobId}/export?format=${format}`
-      );
+      const response = await fetch(`${apiUrl}/api/jobs/${jobId}/export?format=${format}`);
 
       if (!response.ok) {
         throw new Error(`Export failed: ${response.statusText}`);
@@ -101,12 +99,7 @@ export function ExportMenu({ jobId }: ExportMenuProps) {
           stroke="currentColor"
           viewBox="0 0 24 24"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 9l-7 7-7-7"
-          />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
 

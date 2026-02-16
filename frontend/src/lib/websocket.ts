@@ -26,10 +26,10 @@ const INITIAL_RETRY_DELAY = 1000; // 1 second
 
 /**
  * Custom React hook for tracking job progress via WebSocket
- * 
+ *
  * @param jobId - The job ID to track, or null to not connect
  * @returns Current job progress state
- * 
+ *
  * @example
  * ```tsx
  * const { status, progress, error, connected } = useJobProgress(jobId);
@@ -51,6 +51,7 @@ export function useJobProgress(jobId: string | null): JobProgressState {
   useEffect(() => {
     // Don't connect if jobId is null
     if (!jobId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({
         status: null,
         progress: 0,
@@ -120,14 +121,10 @@ export function useJobProgress(jobId: string | null): JobProgressState {
         }));
 
         // Attempt to reconnect with exponential backoff
-        if (
-          retryCountRef.current < MAX_RETRIES &&
-          !reconnectingRef.current
-        ) {
+        if (retryCountRef.current < MAX_RETRIES && !reconnectingRef.current) {
           reconnectingRef.current = true;
-          const delay =
-            INITIAL_RETRY_DELAY * Math.pow(2, retryCountRef.current);
-          
+          const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCountRef.current);
+
           retryTimeoutRef.current = setTimeout(() => {
             retryCountRef.current++;
             connectWebSocket();
@@ -146,7 +143,7 @@ export function useJobProgress(jobId: string | null): JobProgressState {
     // Cleanup function
     return () => {
       reconnectingRef.current = false;
-      
+
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;

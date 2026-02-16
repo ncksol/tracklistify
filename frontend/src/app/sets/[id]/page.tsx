@@ -1,8 +1,17 @@
 'use client';
 
-import { useEffect, useState, useRef, use } from 'react';
+import { useEffect, useState, useRef, useCallback, use } from 'react';
 import Link from 'next/link';
-import { getJob, getTracklist, Job, Tracklist, Track, getJobEvents, JobEvent, deleteUnidentifiedSegment } from '@/lib/api';
+import {
+  getJob,
+  getTracklist,
+  Job,
+  Tracklist,
+  Track,
+  getJobEvents,
+  JobEvent,
+  deleteUnidentifiedSegment,
+} from '@/lib/api';
 import { ProgressBar } from '@/components/ProgressBar';
 import { ActivityLog } from '@/components/ActivityLog';
 import TrackList from '@/components/TrackList';
@@ -14,7 +23,7 @@ interface ResultsPageProps {
   }>;
 }
 
-type PageState = 
+type PageState =
   | { type: 'loading' }
   | { type: 'processing'; job: Job }
   | { type: 'complete'; job: Job; tracklist: Tracklist }
@@ -26,17 +35,17 @@ type PageState =
 function extractYouTubeVideoId(url: string): string | null {
   try {
     const urlObj = new URL(url);
-    
+
     // Handle youtu.be short URLs
     if (urlObj.hostname === 'youtu.be') {
       return urlObj.pathname.slice(1);
     }
-    
+
     // Handle youtube.com URLs
     if (urlObj.hostname.includes('youtube.com')) {
       return urlObj.searchParams.get('v');
     }
-    
+
     return null;
   } catch {
     return null;
@@ -48,7 +57,7 @@ function extractYouTubeVideoId(url: string): string | null {
  */
 function formatDuration(seconds: number | null): string {
   if (seconds === null) return 'Unknown';
-  
+
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
@@ -66,7 +75,7 @@ export default function ResultsPage({ params }: ResultsPageProps) {
   const youtubeIframeRef = useRef<HTMLIFrameElement>(null);
 
   // Fetch job data and tracklist
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const job = await getJob(jobId);
 
@@ -75,25 +84,26 @@ export default function ResultsPage({ params }: ResultsPageProps) {
         const tracklist = await getTracklist(jobId);
         setState({ type: 'complete', job, tracklist });
       } else if (job.status === 'FAILED') {
-        setState({ 
-          type: 'failed', 
-          error: job.error_message || 'Job processing failed' 
+        setState({
+          type: 'failed',
+          error: job.error_message || 'Job processing failed',
         });
       } else {
         setState({ type: 'processing', job });
       }
     } catch (error) {
-      setState({ 
-        type: 'failed', 
-        error: error instanceof Error ? error.message : 'Failed to load job data' 
+      setState({
+        type: 'failed',
+        error: error instanceof Error ? error.message : 'Failed to load job data',
       });
     }
-  };
+  }, [jobId]);
 
   // Initial data fetch
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
-  }, [jobId]);
+  }, [fetchData]);
 
   // Poll for completion when processing
   useEffect(() => {
@@ -102,14 +112,14 @@ export default function ResultsPage({ params }: ResultsPageProps) {
     const interval = setInterval(async () => {
       try {
         const job = await getJob(jobId);
-        
+
         if (job.status === 'COMPLETE') {
           const tracklist = await getTracklist(jobId);
           setState({ type: 'complete', job, tracklist });
         } else if (job.status === 'FAILED') {
-          setState({ 
-            type: 'failed', 
-            error: job.error_message || 'Job processing failed' 
+          setState({
+            type: 'failed',
+            error: job.error_message || 'Job processing failed',
           });
         } else {
           setState({ type: 'processing', job });
@@ -132,7 +142,7 @@ export default function ResultsPage({ params }: ResultsPageProps) {
       try {
         const newEvents = await getJobEvents(jobId, lastTimestamp);
         if (newEvents.length > 0) {
-          setEvents(prev => [...prev, ...newEvents]);
+          setEvents((prev) => [...prev, ...newEvents]);
           const lastEvent = newEvents[newEvents.length - 1];
           if (lastEvent) {
             lastTimestamp = lastEvent.timestamp;
@@ -151,7 +161,7 @@ export default function ResultsPage({ params }: ResultsPageProps) {
   }, [state.type, jobId]);
 
   // Handle track updates
-  const handleTrackUpdate = async (track: Track) => {
+  const handleTrackUpdate = async () => {
     // Refresh tracklist data after update
     if (state.type === 'complete') {
       try {
@@ -164,7 +174,7 @@ export default function ResultsPage({ params }: ResultsPageProps) {
   };
 
   // Handle track deletes
-  const handleTrackDelete = async (trackId: string) => {
+  const handleTrackDelete = async () => {
     // Refresh tracklist data after delete
     if (state.type === 'complete') {
       try {
@@ -191,9 +201,9 @@ export default function ResultsPage({ params }: ResultsPageProps) {
   // Handle track clicks - seek YouTube player
   const handleTrackClick = (track: Track) => {
     if (!youtubeIframeRef.current) return;
-    
+
     const seekSeconds = track.start_time_ms / 1000;
-    
+
     // Use YouTube iframe API postMessage to seek
     youtubeIframeRef.current.contentWindow?.postMessage(
       JSON.stringify({
@@ -201,7 +211,7 @@ export default function ResultsPage({ params }: ResultsPageProps) {
         func: 'seekTo',
         args: [seekSeconds, true], // seekSeconds, allowSeekAhead
       }),
-      '*'
+      '*',
     );
   };
 
@@ -240,15 +250,11 @@ export default function ResultsPage({ params }: ResultsPageProps) {
                 </svg>
               </div>
             </div>
-            
-            <h1 className="text-2xl font-bold text-center text-carbon mb-4">
-              Processing Failed
-            </h1>
-            
-            <p className="text-center text-carbon/70 mb-6">
-              {state.error}
-            </p>
-            
+
+            <h1 className="text-2xl font-bold text-center text-carbon mb-4">Processing Failed</h1>
+
+            <p className="text-center text-carbon/70 mb-6">{state.error}</p>
+
             <div className="flex justify-center">
               <Link
                 href="/history"
@@ -273,26 +279,22 @@ export default function ResultsPage({ params }: ResultsPageProps) {
       <div className="min-h-screen bg-brick-light py-12 px-4">
         <div className="max-w-3xl mx-auto">
           <div className="bg-sand-light rounded-lg shadow-md p-8">
-            <h1 className="text-2xl font-bold text-carbon mb-2">
-              Processing Tracklist
-            </h1>
-            
+            <h1 className="text-2xl font-bold text-carbon mb-2">Processing Tracklist</h1>
+
             {state.job.video_title && (
-              <p className="text-carbon/70 mb-6">
-                {state.job.video_title}
-              </p>
+              <p className="text-carbon/70 mb-6">{state.job.video_title}</p>
             )}
-            
-            <ProgressBar 
+
+            <ProgressBar
               status={state.job.status}
               progress={latestProgress}
               error={state.job.error_message}
             />
-            
+
             <div className="mt-6">
               <ActivityLog events={events} startTime={state.job.created_at} />
             </div>
-            
+
             <div className="mt-8 pt-6 border-t border-brick">
               <Link
                 href="/history"
@@ -322,7 +324,7 @@ export default function ResultsPage({ params }: ResultsPageProps) {
               <h1 className="text-3xl font-bold text-carbon mb-2">
                 {job.video_title || 'Tracklist Results'}
               </h1>
-              
+
               <div className="flex flex-wrap gap-6 text-sm text-carbon/70">
                 <div className="flex items-center gap-2">
                   <svg
@@ -340,7 +342,7 @@ export default function ResultsPage({ params }: ResultsPageProps) {
                   </svg>
                   <span>Duration: {formatDuration(job.duration_seconds)}</span>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   <svg
                     className="h-5 w-5 text-carbon/50"
@@ -355,7 +357,9 @@ export default function ResultsPage({ params }: ResultsPageProps) {
                       d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
                     />
                   </svg>
-                  <span>{trackCount} {trackCount === 1 ? 'track' : 'tracks'} identified</span>
+                  <span>
+                    {trackCount} {trackCount === 1 ? 'track' : 'tracks'} identified
+                  </span>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -363,10 +367,10 @@ export default function ResultsPage({ params }: ResultsPageProps) {
                 </div>
               </div>
             </div>
-            
+
             <ExportMenu jobId={jobId} />
           </div>
-          
+
           <div className="pt-6 border-t border-brick">
             <Link
               href="/history"

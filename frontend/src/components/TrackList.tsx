@@ -14,9 +14,7 @@ interface TrackListProps {
   onSegmentDelete?: (segmentId: string) => void;
 }
 
-type ListItem = 
-  | { type: 'track'; data: Track }
-  | { type: 'gap'; data: UnidentifiedSegment };
+type ListItem = { type: 'track'; data: Track } | { type: 'gap'; data: UnidentifiedSegment };
 
 /**
  * Format milliseconds to MM:SS or HH:MM:SS
@@ -40,7 +38,12 @@ function formatTimestamp(ms: number): string {
 interface GapEditFormProps {
   segment: UnidentifiedSegment;
   isCreating: boolean;
-  onSave: (data: { artist: string; title: string; start_time_ms: number; end_time_ms: number }) => void;
+  onSave: (data: {
+    artist: string;
+    title: string;
+    start_time_ms: number;
+    end_time_ms: number;
+  }) => void;
   onCancel: () => void;
 }
 
@@ -64,7 +67,10 @@ function GapEditForm({ segment, isCreating, onSave, onCancel }: GapEditFormProps
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label htmlFor={`artist-${segment.id}`} className="block text-xs font-medium text-gray-700 mb-1">
+            <label
+              htmlFor={`artist-${segment.id}`}
+              className="block text-xs font-medium text-gray-700 mb-1"
+            >
               Artist
             </label>
             <input
@@ -78,7 +84,10 @@ function GapEditForm({ segment, isCreating, onSave, onCancel }: GapEditFormProps
             />
           </div>
           <div>
-            <label htmlFor={`title-${segment.id}`} className="block text-xs font-medium text-gray-700 mb-1">
+            <label
+              htmlFor={`title-${segment.id}`}
+              className="block text-xs font-medium text-gray-700 mb-1"
+            >
               Title
             </label>
             <input
@@ -94,7 +103,10 @@ function GapEditForm({ segment, isCreating, onSave, onCancel }: GapEditFormProps
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label htmlFor={`start-${segment.id}`} className="block text-xs font-medium text-gray-700 mb-1">
+            <label
+              htmlFor={`start-${segment.id}`}
+              className="block text-xs font-medium text-gray-700 mb-1"
+            >
               Start Time (ms)
             </label>
             <input
@@ -107,7 +119,10 @@ function GapEditForm({ segment, isCreating, onSave, onCancel }: GapEditFormProps
             />
           </div>
           <div>
-            <label htmlFor={`end-${segment.id}`} className="block text-xs font-medium text-gray-700 mb-1">
+            <label
+              htmlFor={`end-${segment.id}`}
+              className="block text-xs font-medium text-gray-700 mb-1"
+            >
               End Time (ms)
             </label>
             <input
@@ -144,7 +159,7 @@ function GapEditForm({ segment, isCreating, onSave, onCancel }: GapEditFormProps
 
 /**
  * TrackList Component
- * 
+ *
  * Displays a sorted list of tracks and unidentified segments with a header row.
  * Combines both types of items and sorts them by start_time_ms.
  */
@@ -171,14 +186,14 @@ export default function TrackList({
 
   const handleAddTrack = async (
     segment: UnidentifiedSegment,
-    formData: { artist: string; title: string; start_time_ms: number; end_time_ms: number }
+    formData: { artist: string; title: string; start_time_ms: number; end_time_ms: number },
   ) => {
     if (!segment.job_id) return;
 
     setIsCreating(true);
     try {
       // Calculate position based on start time
-      const position = tracks.filter(t => t.start_time_ms < formData.start_time_ms).length + 1;
+      const position = tracks.filter((t) => t.start_time_ms < formData.start_time_ms).length + 1;
 
       const newTrack = await createTrack(segment.job_id, {
         position,
@@ -218,7 +233,7 @@ export default function TrackList({
 
       {/* List Items */}
       <div>
-        {combinedItems.map((item, index) => {
+        {combinedItems.map((item) => {
           if (item.type === 'track') {
             return (
               <TrackRow
@@ -262,14 +277,13 @@ export default function TrackList({
                 {/* Unidentified Label with time range */}
                 <div className="flex-grow min-w-0 text-sm text-gray-400 italic">
                   <span className="truncate">
-                    Unidentified ({formatTimestamp(segment.start_time_ms)} — {formatTimestamp(segment.end_time_ms)})
+                    Unidentified ({formatTimestamp(segment.start_time_ms)} —{' '}
+                    {formatTimestamp(segment.end_time_ms)})
                   </span>
                 </div>
 
                 {/* Empty confidence column */}
-                <div className="flex-shrink-0 text-sm text-gray-400">
-                  —
-                </div>
+                <div className="flex-shrink-0 text-sm text-gray-400">—</div>
 
                 {/* Add Track Button */}
                 <div className="flex-shrink-0 flex gap-2">

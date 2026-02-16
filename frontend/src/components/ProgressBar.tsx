@@ -17,9 +17,8 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export function ProgressBar({ status, progress, error }: ProgressBarProps) {
-
   const statusLabel = status ? STATUS_LABELS[status] || status : 'Initializing...';
-  
+
   // Determine progress bar color based on status
   const getProgressColor = () => {
     if (status === 'COMPLETE') return 'bg-green-500';
@@ -31,12 +30,8 @@ export function ProgressBar({ status, progress, error }: ProgressBarProps) {
     <div className="w-full space-y-2">
       {/* Status label */}
       <div className="flex justify-between items-center">
-        <span className="text-sm font-medium text-gray-700">
-          {statusLabel}
-        </span>
-        <span className="text-sm text-gray-500">
-          {progress}%
-        </span>
+        <span className="text-sm font-medium text-gray-700">{statusLabel}</span>
+        <span className="text-sm text-gray-500">{progress}%</span>
       </div>
 
       {/* Progress bar */}
@@ -48,11 +43,7 @@ export function ProgressBar({ status, progress, error }: ProgressBarProps) {
       </div>
 
       {/* Error message */}
-      {error && (
-        <div className="text-sm text-danger">
-          {error}
-        </div>
-      )}
+      {error && <div className="text-sm text-danger">{error}</div>}
     </div>
   );
 }

@@ -1,16 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 
 export default function SettingsPage() {
-  const [threshold, setThreshold] = useState(0.5);
+  const [threshold, setThreshold] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const val = localStorage.getItem('confidence_threshold');
+      return val ? parseFloat(val) : 0.5;
+    }
+    return 0.5;
+  });
   const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    const val = localStorage.getItem('confidence_threshold');
-    if (val) setThreshold(parseFloat(val));
-  }, []);
 
   function handleSave() {
     localStorage.setItem('confidence_threshold', threshold.toString());
@@ -26,8 +27,8 @@ export default function SettingsPage() {
         <div className="bg-sand-light border border-brick rounded-lg shadow-sm p-6">
           <h2 className="text-lg font-semibold text-carbon mb-1">Confidence Threshold</h2>
           <p className="text-sm text-carbon/60 mb-4">
-            Minimum confidence required to accept a track match from ACRCloud.
-            Lower values include more matches but may introduce false positives.
+            Minimum confidence required to accept a track match from ACRCloud. Lower values include
+            more matches but may introduce false positives.
           </p>
 
           <div className="flex items-center gap-4">
@@ -57,17 +58,12 @@ export default function SettingsPage() {
             >
               Save
             </button>
-            {saved && (
-              <span className="text-sm text-saffron font-medium">Settings saved ✓</span>
-            )}
+            {saved && <span className="text-sm text-saffron font-medium">Settings saved ✓</span>}
           </div>
         </div>
 
         <div className="mt-6">
-          <Link
-            href="/"
-            className="text-sm text-paprika hover:text-saffron"
-          >
+          <Link href="/" className="text-sm text-paprika hover:text-saffron">
             ← Back to Home
           </Link>
         </div>

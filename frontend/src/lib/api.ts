@@ -3,7 +3,7 @@
  */
 
 // Read API URL from environment variable, default to localhost
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 // ============================================================================
 // Type Definitions (matching Pydantic models)
@@ -89,17 +89,17 @@ async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const errorText = await response.text();
     let errorMessage: string;
-    
+
     try {
       const errorJson = JSON.parse(errorText);
       errorMessage = errorJson.detail || errorJson.message || errorText;
     } catch {
       errorMessage = errorText || response.statusText;
     }
-    
+
     throw new Error(`API Error (${response.status}): ${errorMessage}`);
   }
-  
+
   return response.json();
 }
 
@@ -117,15 +117,19 @@ function buildUrl(path: string): string {
 /**
  * Create a new job for processing a YouTube URL
  */
-export async function createJob(url: string, force = false, confidence_threshold = 0.50): Promise<Job> {
-  const response = await fetch(buildUrl("/api/jobs"), {
-    method: "POST",
+export async function createJob(
+  url: string,
+  force = false,
+  confidence_threshold = 0.5,
+): Promise<Job> {
+  const response = await fetch(buildUrl('/api/jobs'), {
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify({ url, force, confidence_threshold }),
   });
-  
+
   return handleResponse<Job>(response);
 }
 
@@ -169,16 +173,16 @@ export async function getWaveform(jobId: string): Promise<WaveformData> {
 export async function updateTrack(
   jobId: string,
   trackId: string,
-  data: Partial<Pick<Track, "artist" | "title" | "start_time_ms" | "end_time_ms">>
+  data: Partial<Pick<Track, 'artist' | 'title' | 'start_time_ms' | 'end_time_ms'>>,
 ): Promise<Track> {
   const response = await fetch(buildUrl(`/api/jobs/${jobId}/tracks/${trackId}`), {
-    method: "PATCH",
+    method: 'PATCH',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify(data),
   });
-  
+
   return handleResponse<Track>(response);
 }
 
@@ -187,9 +191,9 @@ export async function updateTrack(
  */
 export async function deleteTrack(jobId: string, trackId: string): Promise<void> {
   const response = await fetch(buildUrl(`/api/jobs/${jobId}/tracks/${trackId}`), {
-    method: "DELETE",
+    method: 'DELETE',
   });
-  
+
   if (!response.ok) {
     await handleResponse(response);
   }
@@ -197,9 +201,9 @@ export async function deleteTrack(jobId: string, trackId: string): Promise<void>
 
 export async function deleteUnidentifiedSegment(jobId: string, segmentId: string): Promise<void> {
   const response = await fetch(buildUrl(`/api/jobs/${jobId}/unidentified/${segmentId}`), {
-    method: "DELETE",
+    method: 'DELETE',
   });
-  
+
   if (!response.ok) {
     await handleResponse(response);
   }
@@ -207,9 +211,9 @@ export async function deleteUnidentifiedSegment(jobId: string, segmentId: string
 
 export async function deleteJob(jobId: string): Promise<void> {
   const response = await fetch(buildUrl(`/api/jobs/${jobId}`), {
-    method: "DELETE",
+    method: 'DELETE',
   });
-  
+
   if (!response.ok) {
     await handleResponse(response);
   }
@@ -218,18 +222,15 @@ export async function deleteJob(jobId: string): Promise<void> {
 /**
  * Manually add a track (fill unidentified gap)
  */
-export async function createTrack(
-  jobId: string,
-  data: TrackCreateData
-): Promise<Track> {
+export async function createTrack(jobId: string, data: TrackCreateData): Promise<Track> {
   const response = await fetch(buildUrl(`/api/jobs/${jobId}/tracks`), {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify(data),
   });
-  
+
   return handleResponse<Track>(response);
 }
 
@@ -239,7 +240,9 @@ export async function createTrack(
  */
 export async function getJobs(page: number = 1): Promise<Job[]> {
   const response = await fetch(buildUrl(`/api/jobs?page=${page}`));
-  const data = await handleResponse<{ jobs: Job[]; total: number; page: number; per_page: number }>(response);
+  const data = await handleResponse<{ jobs: Job[]; total: number; page: number; per_page: number }>(
+    response,
+  );
   return data.jobs;
 }
 
@@ -249,9 +252,9 @@ export async function getJobs(page: number = 1): Promise<Job[]> {
  */
 export async function shareJob(jobId: string): Promise<ShareResponse> {
   const response = await fetch(buildUrl(`/api/jobs/${jobId}/share`), {
-    method: "POST",
+    method: 'POST',
   });
-  
+
   return handleResponse<ShareResponse>(response);
 }
 
