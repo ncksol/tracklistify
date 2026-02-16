@@ -21,19 +21,23 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install -r backend/requirements.txt ruff mypy pytest
+        run: pip install -r backend/requirements.txt ruff mypy pytest pytest-asyncio httpx aiosqlite
 
       - name: Run ruff check
-        run: ruff check backend/app/
+        run: ruff check app/
+        working-directory: backend/
 
       - name: Run ruff format check
-        run: ruff format --check backend/app/
+        run: ruff format --check app/
+        working-directory: backend/
 
       - name: Run mypy
-        run: mypy backend/app/
+        run: mypy app/
+        working-directory: backend/
 
       - name: Run pytest
-        run: pytest backend/tests/ -v
+        run: pytest tests/ -v
+        working-directory: backend/
 
   frontend:
     runs-on: ubuntu-latest
