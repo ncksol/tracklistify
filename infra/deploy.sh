@@ -88,6 +88,7 @@ DB_OUTPUT=$(az deployment group create \
 
 DB_FQDN=$(echo "${DB_OUTPUT}" | jq -r '.fqdn.value')
 DB_NAME=$(echo "${DB_OUTPUT}" | jq -r '.databaseName.value')
+DB_SERVER_NAME=$(echo "${DB_OUTPUT}" | jq -r '.serverName.value')
 echo "✓ PostgreSQL FQDN: ${DB_FQDN}"
 echo "✓ Database Name: ${DB_NAME}"
 echo "✓ Entra ID Admin configured: ${USER_DISPLAY_NAME}"
@@ -237,8 +238,62 @@ az role assignment create \
 echo "✓ RBAC roles assigned"
 echo ""
 
-# Step 12: Build and push frontend Docker image with backend URL
-echo "[Step 12/14] Building and pushing frontend Docker image..."
+# Step 12: Set up PostgreSQL MI users and run migrations
+echo "[Step 12/17] Setting up PostgreSQL managed identity access..."
+
+# Add temporary firewall rule for client IP
+CLIENT_IP=$(curl -s https://ifconfig.me)
+echo "  - Adding firewall rule for ${CLIENT_IP}..."
+az postgres flexible-server firewall-rule create \
+  --resource-group "${RESOURCE_GROUP}" \
+  --name "${DB_SERVER_NAME}" \
+  --rule-name "deploy-client-$(date +%s)" \
+  --start-ip-address "${CLIENT_IP}" \
+  --end-ip-address "${CLIENT_IP}" \
+  --output none
+
+FIREWALL_RULE_NAME=$(az postgres flexible-server firewall-rule list \
+  --resource-group "${RESOURCE_GROUP}" \
+  --name "${DB_SERVER_NAME}" \
+  --query '[-1].name' -o tsv)
+
+# Create MI principals in PostgreSQL
+BACKEND_APP_NAME="${ENVIRONMENT_NAME}-backend-api"
+CELERY_APP_NAME="${ENVIRONMENT_NAME}-celery-worker"
+
+echo "  - Creating MI principals in PostgreSQL..."
+PGPASSWORD="${DB_ADMIN_PASSWORD}" psql \
+  "host=${DB_FQDN} dbname=${DB_NAME} user=${DB_ADMIN_LOGIN} sslmode=require" \
+  -c "SELECT * FROM pgaadauth_create_principal('${BACKEND_APP_NAME}', false, false);" \
+  -c "SELECT * FROM pgaadauth_create_principal('${CELERY_APP_NAME}', false, false);" \
+  -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO \"${BACKEND_APP_NAME}\";" \
+  -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO \"${CELERY_APP_NAME}\";" \
+  -c "GRANT ALL ON SCHEMA public TO \"${BACKEND_APP_NAME}\";" \
+  -c "GRANT ALL ON SCHEMA public TO \"${CELERY_APP_NAME}\";" \
+  -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO \"${BACKEND_APP_NAME}\";" \
+  -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO \"${CELERY_APP_NAME}\";" \
+  -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"${BACKEND_APP_NAME}\";" \
+  -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"${CELERY_APP_NAME}\";"
+echo "✓ MI principals created and permissions granted"
+
+# Run Alembic migrations
+echo "  - Running database migrations..."
+MIGRATION_DB_URL="postgresql://${DB_ADMIN_LOGIN}:${DB_ADMIN_PASSWORD}@${DB_FQDN}/${DB_NAME}?sslmode=require"
+(cd backend && DATABASE_URL="${MIGRATION_DB_URL}" python -m alembic upgrade head)
+echo "✓ Migrations complete"
+
+# Remove temporary firewall rule
+echo "  - Removing temporary firewall rule..."
+az postgres flexible-server firewall-rule delete \
+  --resource-group "${RESOURCE_GROUP}" \
+  --name "${DB_SERVER_NAME}" \
+  --rule-name "${FIREWALL_RULE_NAME}" \
+  --yes --output none 2>/dev/null || true
+echo "✓ PostgreSQL setup complete"
+echo ""
+
+# Step 13: Build and push frontend Docker image with backend URL
+echo "[Step 13/17] Building and pushing frontend Docker image..."
 az acr build \
   --registry "${ACR_NAME}" \
   --image tracklistify-frontend:latest \
@@ -249,8 +304,8 @@ az acr build \
 echo "✓ Frontend image pushed to ACR"
 echo ""
 
-# Step 13: Update frontend container app with new image
-echo "[Step 13/14] Updating frontend container app..."
+# Step 14: Update frontend container app with new image
+echo "[Step 14/17] Updating frontend container app..."
 az containerapp update \
   --name "${ENVIRONMENT_NAME}-frontend" \
   --resource-group "${RESOURCE_GROUP}" \
@@ -259,8 +314,27 @@ az containerapp update \
 echo "✓ Frontend container app updated"
 echo ""
 
-# Step 14: Output deployment summary
-echo "[Step 14/14] Deployment complete!"
+# Step 15: Restart container apps to pick up MI access
+echo "[Step 15/17] Restarting container apps..."
+az containerapp revision restart \
+  --name "${BACKEND_APP_NAME}" \
+  --resource-group "${RESOURCE_GROUP}" \
+  --revision "$(az containerapp revision list --name "${BACKEND_APP_NAME}" -g "${RESOURCE_GROUP}" --query '[0].name' -o tsv)" \
+  --output none 2>/dev/null || true
+az containerapp revision restart \
+  --name "${CELERY_APP_NAME}" \
+  --resource-group "${RESOURCE_GROUP}" \
+  --revision "$(az containerapp revision list --name "${CELERY_APP_NAME}" -g "${RESOURCE_GROUP}" --query '[0].name' -o tsv)" \
+  --output none 2>/dev/null || true
+echo "✓ Container apps restarted"
+echo ""
+
+# Step 16: Output deployment summary
+echo "[Step 16/17] Waiting for containers to stabilize..."
+sleep 30
+
+# Step 17: Deployment summary
+echo "[Step 17/17] Deployment complete!"
 echo ""
 echo "============================================================================"
 echo "Deployment Summary"

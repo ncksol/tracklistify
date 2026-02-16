@@ -149,6 +149,10 @@ resource celeryWorker 'Microsoft.App/containerApps@2023-05-01' = {
               value: postgresDatabase
             }
             {
+              name: 'POSTGRES_USER'
+              value: '${environmentName}-celery-worker'
+            }
+            {
               name: 'REDIS_HOST'
               value: redisHost
             }

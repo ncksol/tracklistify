@@ -1,7 +1,7 @@
 param location string = 'uksouth'
 param environmentName string = 'tracklistify'
 
-var storageAccountName = '${environmentName}${uniqueString(resourceGroup().id)}'
+var storageAccountName = take('st${environmentName}${uniqueString(resourceGroup().id)}', 24)
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: storageAccountName

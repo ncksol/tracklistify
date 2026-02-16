@@ -31,7 +31,7 @@ def _get_redis_url() -> str:
         credential = DefaultAzureCredential()
         client = SecretClient(vault_url=vault_url, credential=credential)
         redis_key = client.get_secret("redis-primary-key").value
-        return f"rediss://:{redis_key}@{host}:6380/0"
+        return f"rediss://:{redis_key}@{host}:6380/0?ssl_cert_reqs=required"
 
     # No Key Vault, use unsecured connection
     return f"redis://{host}:6379/0"

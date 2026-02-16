@@ -35,8 +35,21 @@ def _get_sync_session() -> Session:
     """Lazy-init sync engine and return a new session."""
     global _sync_engine, _SyncSessionMaker  # noqa: PLW0603
     if _sync_engine is None:
-        db_url = os.getenv("DATABASE_URL", "")
-        sync_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+        db_url = os.getenv("DATABASE_URL")
+        if db_url:
+            sync_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+        else:
+            # Cloud: build URL with managed identity token
+            host = os.getenv("POSTGRES_HOST")
+            db = os.getenv("POSTGRES_DB", "tracklistify")
+            if not host:
+                raise ValueError("Either DATABASE_URL or POSTGRES_HOST must be set")
+            from azure.identity import DefaultAzureCredential
+
+            credential = DefaultAzureCredential()
+            token = credential.get_token("https://ossrdbms-aad.database.windows.net/.default").token
+            user = os.getenv("POSTGRES_USER", "tracklistify-celery-worker")
+            sync_url = f"postgresql://{user}:{token}@{host}/{db}?sslmode=require"
         _sync_engine = create_engine(sync_url, pool_pre_ping=True)
         _SyncSessionMaker = sessionmaker(bind=_sync_engine)
     return _SyncSessionMaker()  # type: ignore[no-any-return]
