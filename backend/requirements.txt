@@ -1,0 +1,13 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+celery[redis]==5.4.0
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+pydub==0.25.1
+aiohttp==3.11.10
+python-dotenv==1.0.1
+alembic==1.14.0
+azure-storage-blob==12.28.0
+aiofiles==25.1.0
+yt-dlp==2026.2.4
+opencensus-ext-azure==1.1.15

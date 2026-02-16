@@ -1,0 +1,332 @@
+targetScope = 'resourceGroup'
+
+@description('Azure region for all resources')
+param location string = 'uksouth'
+
+@description('Environment name used for resource naming')
+param environmentName string = 'tracklistify'
+
+@description('Container Apps Environment resource ID')
+param containerAppsEnvironmentId string
+
+@description('Azure Container Registry name')
+param acrName string
+
+@description('Tags to apply to all resources')
+param tags object = {}
+
+// Secret parameters for environment variables
+@secure()
+@description('Database connection URL')
+param databaseUrl string
+
+@secure()
+@description('Redis connection URL')
+param redisUrl string
+
+@secure()
+@description('ACRCloud Access Key')
+param acrcloudAccessKey string
+
+@secure()
+@description('ACRCloud Access Secret')
+param acrcloudAccessSecret string
+
+@description('ACRCloud Host')
+param acrcloudHost string = 'identify-eu-west-1.acrcloud.com'
+
+@secure()
+@description('Secret key for backend API')
+param secretKey string
+
+@description('CORS allowed origins (comma-separated)')
+param corsOrigins string = '*'
+
+@description('Backend API image tag')
+param backendImageTag string = 'latest'
+
+@description('Celery worker image tag')
+param celeryImageTag string = 'latest'
+
+@description('Frontend image tag')
+param frontendImageTag string = 'latest'
+
+// Azure Container Registry reference
+resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
+  name: acrName
+}
+
+// Backend API Container App
+resource backendApi 'Microsoft.App/containerApps@2023-05-01' = {
+  name: '${environmentName}-backend-api'
+  location: location
+  tags: tags
+  properties: {
+    managedEnvironmentId: containerAppsEnvironmentId
+    configuration: {
+      ingress: {
+        external: true
+        targetPort: 8000
+        transport: 'auto'
+        allowInsecure: false
+      }
+      registries: [
+        {
+          server: acr.properties.loginServer
+          identity: 'system'
+        }
+      ]
+      secrets: [
+        {
+          name: 'database-url'
+          value: databaseUrl
+        }
+        {
+          name: 'redis-url'
+          value: redisUrl
+        }
+        {
+          name: 'acrcloud-access-key'
+          value: acrcloudAccessKey
+        }
+        {
+          name: 'acrcloud-access-secret'
+          value: acrcloudAccessSecret
+        }
+        {
+          name: 'secret-key'
+          value: secretKey
+        }
+      ]
+    }
+    template: {
+      containers: [
+        {
+          name: 'backend-api'
+          image: '${acr.properties.loginServer}/tracklistify-backend:${backendImageTag}'
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+          env: [
+            {
+              name: 'DATABASE_URL'
+              secretRef: 'database-url'
+            }
+            {
+              name: 'REDIS_URL'
+              secretRef: 'redis-url'
+            }
+            {
+              name: 'ACRCLOUD_ACCESS_KEY'
+              secretRef: 'acrcloud-access-key'
+            }
+            {
+              name: 'ACRCLOUD_ACCESS_SECRET'
+              secretRef: 'acrcloud-access-secret'
+            }
+            {
+              name: 'ACRCLOUD_HOST'
+              value: acrcloudHost
+            }
+            {
+              name: 'SECRET_KEY'
+              secretRef: 'secret-key'
+            }
+            {
+              name: 'CORS_ORIGINS'
+              value: corsOrigins
+            }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: 0
+        maxReplicas: 1
+      }
+    }
+  }
+  identity: {
+    type: 'SystemAssigned'
+  }
+}
+
+// Celery Worker Container App
+resource celeryWorker 'Microsoft.App/containerApps@2023-05-01' = {
+  name: '${environmentName}-celery-worker'
+  location: location
+  tags: tags
+  properties: {
+    managedEnvironmentId: containerAppsEnvironmentId
+    configuration: {
+      registries: [
+        {
+          server: acr.properties.loginServer
+          identity: 'system'
+        }
+      ]
+      secrets: [
+        {
+          name: 'database-url'
+          value: databaseUrl
+        }
+        {
+          name: 'redis-url'
+          value: redisUrl
+        }
+        {
+          name: 'acrcloud-access-key'
+          value: acrcloudAccessKey
+        }
+        {
+          name: 'acrcloud-access-secret'
+          value: acrcloudAccessSecret
+        }
+        {
+          name: 'secret-key'
+          value: secretKey
+        }
+      ]
+    }
+    template: {
+      containers: [
+        {
+          name: 'celery-worker'
+          image: '${acr.properties.loginServer}/tracklistify-celery:${celeryImageTag}'
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+          env: [
+            {
+              name: 'DATABASE_URL'
+              secretRef: 'database-url'
+            }
+            {
+              name: 'REDIS_URL'
+              secretRef: 'redis-url'
+            }
+            {
+              name: 'ACRCLOUD_ACCESS_KEY'
+              secretRef: 'acrcloud-access-key'
+            }
+            {
+              name: 'ACRCLOUD_ACCESS_SECRET'
+              secretRef: 'acrcloud-access-secret'
+            }
+            {
+              name: 'ACRCLOUD_HOST'
+              value: acrcloudHost
+            }
+            {
+              name: 'SECRET_KEY'
+              secretRef: 'secret-key'
+            }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: 0
+        maxReplicas: 1
+      }
+    }
+  }
+  identity: {
+    type: 'SystemAssigned'
+  }
+}
+
+// Frontend Container App
+resource frontend 'Microsoft.App/containerApps@2023-05-01' = {
+  name: '${environmentName}-frontend'
+  location: location
+  tags: tags
+  properties: {
+    managedEnvironmentId: containerAppsEnvironmentId
+    configuration: {
+      ingress: {
+        external: true
+        targetPort: 3000
+        transport: 'auto'
+        allowInsecure: false
+      }
+      registries: [
+        {
+          server: acr.properties.loginServer
+          identity: 'system'
+        }
+      ]
+      secrets: [
+        {
+          name: 'backend-url'
+          value: 'https://${backendApi.properties.configuration.ingress.fqdn}'
+        }
+      ]
+    }
+    template: {
+      containers: [
+        {
+          name: 'frontend'
+          image: '${acr.properties.loginServer}/tracklistify-frontend:${frontendImageTag}'
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+          env: [
+            {
+              name: 'NEXT_PUBLIC_API_URL'
+              secretRef: 'backend-url'
+            }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: 0
+        maxReplicas: 1
+      }
+    }
+  }
+  identity: {
+    type: 'SystemAssigned'
+  }
+}
+
+// Assign ACR pull role to the container apps
+var acrPullRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
+
+resource backendAcrPullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(acr.id, backendApi.id, acrPullRoleDefinitionId)
+  scope: acr
+  properties: {
+    roleDefinitionId: acrPullRoleDefinitionId
+    principalId: backendApi.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource celeryAcrPullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(acr.id, celeryWorker.id, acrPullRoleDefinitionId)
+  scope: acr
+  properties: {
+    roleDefinitionId: acrPullRoleDefinitionId
+    principalId: celeryWorker.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource frontendAcrPullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(acr.id, frontend.id, acrPullRoleDefinitionId)
+  scope: acr
+  properties: {
+    roleDefinitionId: acrPullRoleDefinitionId
+    principalId: frontend.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Outputs
+output backendFqdn string = backendApi.properties.configuration.ingress.fqdn
+output frontendFqdn string = frontend.properties.configuration.ingress.fqdn
+output backendApiName string = backendApi.name
+output celeryWorkerName string = celeryWorker.name
+output frontendName string = frontend.name

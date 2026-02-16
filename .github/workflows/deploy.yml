@@ -1,0 +1,77 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Only run if CI workflow completed successfully
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Log in to Azure Container Registry
+        run: |
+          az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
+      
+      - name: Set image tag
+        id: image-tag
+        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      
+      - name: Build and push backend Docker image
+        run: |
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/tracklistify-backend:${{ steps.image-tag.outputs.sha }} backend/
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/tracklistify-backend:${{ steps.image-tag.outputs.sha }}
+      
+      - name: Build and push frontend Docker image
+        run: |
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/tracklistify-frontend:${{ steps.image-tag.outputs.sha }} frontend/
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/tracklistify-frontend:${{ steps.image-tag.outputs.sha }}
+      
+      - name: Deploy backend API to Azure Container Apps
+        run: |
+          az containerapp update \
+            --name tracklistify-backend-api \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/tracklistify-backend:${{ steps.image-tag.outputs.sha }}
+      
+      - name: Deploy Celery worker to Azure Container Apps
+        run: |
+          az containerapp update \
+            --name tracklistify-celery-worker \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/tracklistify-backend:${{ steps.image-tag.outputs.sha }}
+      
+      - name: Deploy frontend to Azure Container Apps
+        run: |
+          az containerapp update \
+            --name tracklistify-frontend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/tracklistify-frontend:${{ steps.image-tag.outputs.sha }}
+
+# Required GitHub Secrets:
+# - AZURE_CLIENT_ID: Azure service principal client ID for OIDC authentication
+# - AZURE_TENANT_ID: Azure tenant ID
+# - AZURE_SUBSCRIPTION_ID: Azure subscription ID
+# - ACR_LOGIN_SERVER: Azure Container Registry login server (e.g., myregistry.azurecr.io)
+# - AZURE_RESOURCE_GROUP: Azure resource group containing the Container Apps
