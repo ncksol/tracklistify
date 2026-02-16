@@ -31,6 +31,7 @@ def _get_database_url() -> str:
         raise ValueError("Either DATABASE_URL or POSTGRES_HOST must be set")
 
     from azure.identity import DefaultAzureCredential
+
     credential = DefaultAzureCredential()
     token = credential.get_token("https://ossrdbms-aad.database.windows.net/.default").token
     # The username for Entra auth is the managed identity name

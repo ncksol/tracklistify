@@ -45,6 +45,7 @@ def _get_blob_service_client() -> BlobServiceClient:
     # Cloud: use managed identity
     if STORAGE_ACCOUNT_NAME:
         from azure.identity.aio import DefaultAzureCredential
+
         account_url = f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
         return BlobServiceClient(account_url, credential=DefaultAzureCredential())
 
