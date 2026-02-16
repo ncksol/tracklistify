@@ -40,7 +40,7 @@ def _get_blob_service_client() -> BlobServiceClient:
 
     # If connection string is set, use it (local dev)
     if STORAGE_CONNECTION_STRING and not STORAGE_CONNECTION_STRING.startswith("your_"):
-        return BlobServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)  # type: ignore[arg-type]
+        return BlobServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)
 
     # Cloud: use managed identity
     if STORAGE_ACCOUNT_NAME:

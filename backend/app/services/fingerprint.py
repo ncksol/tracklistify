@@ -51,9 +51,9 @@ def _get_acr_credentials() -> dict[str, str]:
         credential = DefaultAzureCredential()
         client = SecretClient(vault_url=vault_url, credential=credential)
 
-        access_key = client.get_secret("acr-access-key").value
-        access_secret = client.get_secret("acr-access-secret").value
-        acr_host = client.get_secret("acr-host").value
+        access_key = client.get_secret("acr-access-key").value or ""
+        access_secret = client.get_secret("acr-access-secret").value or ""
+        acr_host = client.get_secret("acr-host").value or ""
 
         _acr_credentials = {
             "access_key": access_key,
