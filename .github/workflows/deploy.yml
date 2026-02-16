@@ -43,9 +43,19 @@ jobs:
           docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/tracklistify-backend:${{ steps.image-tag.outputs.sha }} backend/
           docker push ${{ secrets.ACR_LOGIN_SERVER }}/tracklistify-backend:${{ steps.image-tag.outputs.sha }}
       
+      - name: Get backend FQDN
+        id: backend-fqdn
+        run: |
+          FQDN=$(az containerapp show --name tracklistify-backend-api --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --query 'properties.configuration.ingress.fqdn' -o tsv)
+          echo "fqdn=$FQDN" >> $GITHUB_OUTPUT
+      
       - name: Build and push frontend Docker image
         run: |
-          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/tracklistify-frontend:${{ steps.image-tag.outputs.sha }} frontend/
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=https://${{ steps.backend-fqdn.outputs.fqdn }} \
+            --build-arg NEXT_PUBLIC_WS_URL=wss://${{ steps.backend-fqdn.outputs.fqdn }} \
+            -t ${{ secrets.ACR_LOGIN_SERVER }}/tracklistify-frontend:${{ steps.image-tag.outputs.sha }} \
+            frontend/
           docker push ${{ secrets.ACR_LOGIN_SERVER }}/tracklistify-frontend:${{ steps.image-tag.outputs.sha }}
       
       - name: Deploy backend API to Azure Container Apps

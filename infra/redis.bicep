@@ -18,6 +18,7 @@ resource redis 'Microsoft.Cache/redis@2023-08-01' = {
   }
 }
 
+output redisHostName string = redis.properties.hostName
 output hostName string = redis.properties.hostName
 output sslPort int = redis.properties.sslPort
 output primaryKey string = listKeys(redis.id, redis.apiVersion).primaryKey

@@ -15,38 +15,27 @@ param acrName string
 @description('Tags to apply to all resources')
 param tags object = {}
 
-// Secret parameters for environment variables
-@secure()
-@description('Database connection URL')
-param databaseUrl string
+// Parameters for passwordless authentication
+@description('PostgreSQL server host')
+param postgresHost string
 
-@secure()
-@description('Redis connection URL')
-param redisUrl string
+@description('PostgreSQL database name')
+param postgresDatabase string = 'tracklistify'
 
-@secure()
-@description('ACRCloud Access Key')
-param acrcloudAccessKey string
+@description('Redis server host')
+param redisHost string
 
-@secure()
-@description('ACRCloud Access Secret')
-param acrcloudAccessSecret string
+@description('Storage account name for blob storage')
+param storageAccountName string
 
-@description('ACRCloud Host')
-param acrcloudHost string = 'identify-eu-west-1.acrcloud.com'
-
-@secure()
-@description('Secret key for backend API')
-param secretKey string
+@description('Key Vault URI for secrets')
+param keyVaultUri string
 
 @description('CORS allowed origins (comma-separated)')
 param corsOrigins string = '*'
 
 @description('Backend API image tag')
 param backendImageTag string = 'latest'
-
-@description('Celery worker image tag')
-param celeryImageTag string = 'latest'
 
 @description('Frontend image tag')
 param frontendImageTag string = 'latest'
@@ -76,28 +65,6 @@ resource backendApi 'Microsoft.App/containerApps@2023-05-01' = {
           identity: 'system'
         }
       ]
-      secrets: [
-        {
-          name: 'database-url'
-          value: databaseUrl
-        }
-        {
-          name: 'redis-url'
-          value: redisUrl
-        }
-        {
-          name: 'acrcloud-access-key'
-          value: acrcloudAccessKey
-        }
-        {
-          name: 'acrcloud-access-secret'
-          value: acrcloudAccessSecret
-        }
-        {
-          name: 'secret-key'
-          value: secretKey
-        }
-      ]
     }
     template: {
       containers: [
@@ -110,28 +77,24 @@ resource backendApi 'Microsoft.App/containerApps@2023-05-01' = {
           }
           env: [
             {
-              name: 'DATABASE_URL'
-              secretRef: 'database-url'
+              name: 'POSTGRES_HOST'
+              value: postgresHost
             }
             {
-              name: 'REDIS_URL'
-              secretRef: 'redis-url'
+              name: 'POSTGRES_DB'
+              value: postgresDatabase
             }
             {
-              name: 'ACRCLOUD_ACCESS_KEY'
-              secretRef: 'acrcloud-access-key'
+              name: 'REDIS_HOST'
+              value: redisHost
             }
             {
-              name: 'ACRCLOUD_ACCESS_SECRET'
-              secretRef: 'acrcloud-access-secret'
+              name: 'STORAGE_ACCOUNT_NAME'
+              value: storageAccountName
             }
             {
-              name: 'ACRCLOUD_HOST'
-              value: acrcloudHost
-            }
-            {
-              name: 'SECRET_KEY'
-              secretRef: 'secret-key'
+              name: 'KEY_VAULT_URI'
+              value: keyVaultUri
             }
             {
               name: 'CORS_ORIGINS'
@@ -151,7 +114,7 @@ resource backendApi 'Microsoft.App/containerApps@2023-05-01' = {
   }
 }
 
-// Celery Worker Container App
+// Celery Worker Container App (same image as backend, different command)
 resource celeryWorker 'Microsoft.App/containerApps@2023-05-01' = {
   name: '${environmentName}-celery-worker'
   location: location
@@ -165,62 +128,37 @@ resource celeryWorker 'Microsoft.App/containerApps@2023-05-01' = {
           identity: 'system'
         }
       ]
-      secrets: [
-        {
-          name: 'database-url'
-          value: databaseUrl
-        }
-        {
-          name: 'redis-url'
-          value: redisUrl
-        }
-        {
-          name: 'acrcloud-access-key'
-          value: acrcloudAccessKey
-        }
-        {
-          name: 'acrcloud-access-secret'
-          value: acrcloudAccessSecret
-        }
-        {
-          name: 'secret-key'
-          value: secretKey
-        }
-      ]
     }
     template: {
       containers: [
         {
           name: 'celery-worker'
-          image: '${acr.properties.loginServer}/tracklistify-celery:${celeryImageTag}'
+          image: '${acr.properties.loginServer}/tracklistify-backend:${backendImageTag}'
+          command: [ 'celery', '-A', 'app.workers.celery_app', 'worker', '--loglevel=info' ]
           resources: {
             cpu: json('0.25')
             memory: '0.5Gi'
           }
           env: [
             {
-              name: 'DATABASE_URL'
-              secretRef: 'database-url'
+              name: 'POSTGRES_HOST'
+              value: postgresHost
             }
             {
-              name: 'REDIS_URL'
-              secretRef: 'redis-url'
+              name: 'POSTGRES_DB'
+              value: postgresDatabase
             }
             {
-              name: 'ACRCLOUD_ACCESS_KEY'
-              secretRef: 'acrcloud-access-key'
+              name: 'REDIS_HOST'
+              value: redisHost
             }
             {
-              name: 'ACRCLOUD_ACCESS_SECRET'
-              secretRef: 'acrcloud-access-secret'
+              name: 'STORAGE_ACCOUNT_NAME'
+              value: storageAccountName
             }
             {
-              name: 'ACRCLOUD_HOST'
-              value: acrcloudHost
-            }
-            {
-              name: 'SECRET_KEY'
-              secretRef: 'secret-key'
+              name: 'KEY_VAULT_URI'
+              value: keyVaultUri
             }
           ]
         }
@@ -256,12 +194,6 @@ resource frontend 'Microsoft.App/containerApps@2023-05-01' = {
           identity: 'system'
         }
       ]
-      secrets: [
-        {
-          name: 'backend-url'
-          value: 'https://${backendApi.properties.configuration.ingress.fqdn}'
-        }
-      ]
     }
     template: {
       containers: [
@@ -274,8 +206,8 @@ resource frontend 'Microsoft.App/containerApps@2023-05-01' = {
           }
           env: [
             {
-              name: 'NEXT_PUBLIC_API_URL'
-              secretRef: 'backend-url'
+              name: 'HOSTNAME'
+              value: '0.0.0.0'
             }
           ]
         }
@@ -330,3 +262,6 @@ output frontendFqdn string = frontend.properties.configuration.ingress.fqdn
 output backendApiName string = backendApi.name
 output celeryWorkerName string = celeryWorker.name
 output frontendName string = frontend.name
+output backendPrincipalId string = backendApi.identity.principalId
+output celeryPrincipalId string = celeryWorker.identity.principalId
+output frontendPrincipalId string = frontend.identity.principalId

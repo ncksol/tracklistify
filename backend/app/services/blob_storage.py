@@ -13,12 +13,15 @@ load_dotenv()
 
 # Module-level configuration
 STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+STORAGE_ACCOUNT_NAME = os.getenv("STORAGE_ACCOUNT_NAME")
 STORAGE_CONTAINER = os.getenv("AZURE_STORAGE_CONTAINER", "tracklistify-temp-audio")
 
 
 def _is_storage_configured() -> bool:
     """Check if Azure Storage is configured with real credentials."""
-    return bool(STORAGE_CONNECTION_STRING and not STORAGE_CONNECTION_STRING.startswith("your_"))
+    if STORAGE_CONNECTION_STRING and not STORAGE_CONNECTION_STRING.startswith("your_"):
+        return True
+    return bool(STORAGE_ACCOUNT_NAME)
 
 
 def _get_blob_service_client() -> BlobServiceClient:
@@ -28,12 +31,24 @@ def _get_blob_service_client() -> BlobServiceClient:
         BlobServiceClient: Async blob service client
 
     Raises:
-        ValueError: If AZURE_STORAGE_CONNECTION_STRING is not set
+        ValueError: If neither connection string nor storage account name is configured
     """
     if not _is_storage_configured():
-        raise ValueError("AZURE_STORAGE_CONNECTION_STRING environment variable is not set")
+        raise ValueError(
+            "Either AZURE_STORAGE_CONNECTION_STRING or STORAGE_ACCOUNT_NAME must be set"
+        )
 
-    return BlobServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)  # type: ignore[arg-type]
+    # If connection string is set, use it (local dev)
+    if STORAGE_CONNECTION_STRING and not STORAGE_CONNECTION_STRING.startswith("your_"):
+        return BlobServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)  # type: ignore[arg-type]
+
+    # Cloud: use managed identity
+    if STORAGE_ACCOUNT_NAME:
+        from azure.identity.aio import DefaultAzureCredential
+        account_url = f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
+        return BlobServiceClient(account_url, credential=DefaultAzureCredential())
+
+    raise ValueError("Storage configuration error")  # Should not reach here
 
 
 async def upload_audio(job_id: str, file_path: str) -> str:

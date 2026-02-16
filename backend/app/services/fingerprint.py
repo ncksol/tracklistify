@@ -10,6 +10,60 @@ from typing import Any
 
 import aiohttp
 
+# Module-level cache for ACRCloud credentials
+_acr_credentials: dict[str, str] | None = None
+
+
+def _get_acr_credentials() -> dict[str, str]:
+    """Get ACRCloud credentials from env vars or Key Vault.
+
+    Returns:
+        Dict with keys: access_key, access_secret, host
+
+    Raises:
+        ValueError: If credentials are not configured
+    """
+    global _acr_credentials  # noqa: PLW0603
+
+    # Return cached credentials if already loaded
+    if _acr_credentials is not None:
+        return _acr_credentials
+
+    # Try env vars first (local dev)
+    access_key = os.getenv("ACR_ACCESS_KEY")
+    access_secret = os.getenv("ACR_ACCESS_SECRET")
+    acr_host = os.getenv("ACR_HOST")
+
+    if access_key and access_secret and acr_host:
+        _acr_credentials = {
+            "access_key": access_key,
+            "access_secret": access_secret,
+            "host": acr_host,
+        }
+        return _acr_credentials
+
+    # Try Key Vault (cloud)
+    vault_url = os.getenv("KEY_VAULT_URI")
+    if vault_url:
+        from azure.identity import DefaultAzureCredential
+        from azure.keyvault.secrets import SecretClient
+
+        credential = DefaultAzureCredential()
+        client = SecretClient(vault_url=vault_url, credential=credential)
+
+        access_key = client.get_secret("acr-access-key").value
+        access_secret = client.get_secret("acr-access-secret").value
+        acr_host = client.get_secret("acr-host").value
+
+        _acr_credentials = {
+            "access_key": access_key,
+            "access_secret": access_secret,
+            "host": acr_host,
+        }
+        return _acr_credentials
+
+    raise ValueError("ACRCloud credentials not found in environment variables or Key Vault")
+
 
 async def identify_segment(audio_path: str) -> dict[str, Any] | None:
     """
@@ -22,12 +76,10 @@ async def identify_segment(audio_path: str) -> dict[str, Any] | None:
         Dict with keys: title, artist, album, confidence_score, play_offset_ms
         Returns None if no match found or confidence below threshold
     """
-    access_key = os.getenv("ACR_ACCESS_KEY")
-    access_secret = os.getenv("ACR_ACCESS_SECRET")
-    acr_host = os.getenv("ACR_HOST")
-
-    if not access_key or not access_secret or not acr_host:
-        raise ValueError("Missing ACRCloud credentials in environment variables")
+    credentials = _get_acr_credentials()
+    access_key = credentials["access_key"]
+    access_secret = credentials["access_secret"]
+    acr_host = credentials["host"]
 
     # Generate signature
     http_method = "POST"

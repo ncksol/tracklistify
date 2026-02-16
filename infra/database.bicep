@@ -3,6 +3,9 @@ param environmentName string = 'tracklistify'
 param administratorLogin string
 @secure()
 param administratorPassword string
+param entraAdminObjectId string
+param entraAdminName string
+param entraAdminType string = 'User'
 
 var serverName = 'psql-${environmentName}-${uniqueString(resourceGroup().id)}'
 
@@ -17,9 +20,24 @@ resource postgresServer 'Microsoft.DBforPostgreSQL/flexibleServers@2023-03-01-pr
     version: '16'
     administratorLogin: administratorLogin
     administratorLoginPassword: administratorPassword
+    authConfig: {
+      activeDirectoryAuth: 'Enabled'
+      passwordAuth: 'Enabled'
+      tenantId: subscription().tenantId
+    }
     storage: {
       storageSizeGB: 32
     }
+  }
+}
+
+resource entraAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@2024-08-01' = {
+  parent: postgresServer
+  name: entraAdminObjectId
+  properties: {
+    principalName: entraAdminName
+    principalType: entraAdminType
+    tenantId: subscription().tenantId
   }
 }
 
