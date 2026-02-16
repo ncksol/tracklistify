@@ -18,10 +18,7 @@ STORAGE_CONTAINER = os.getenv("AZURE_STORAGE_CONTAINER", "tracklistify-temp-audi
 
 def _is_storage_configured() -> bool:
     """Check if Azure Storage is configured with real credentials."""
-    return bool(
-        STORAGE_CONNECTION_STRING
-        and not STORAGE_CONNECTION_STRING.startswith("your_")
-    )
+    return bool(STORAGE_CONNECTION_STRING and not STORAGE_CONNECTION_STRING.startswith("your_"))
 
 
 def _get_blob_service_client() -> BlobServiceClient:

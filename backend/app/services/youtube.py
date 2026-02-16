@@ -25,8 +25,7 @@ async def _run_ytdlp(args: list[str]) -> tuple[str, str]:
 
     if process.returncode != 0:
         raise RuntimeError(
-            f"yt-dlp failed with exit code {process.returncode}: "
-            f"{stderr.decode().strip()}"
+            f"yt-dlp failed with exit code {process.returncode}: {stderr.decode().strip()}"
         )
 
     return stdout.decode().strip(), stderr.decode().strip()
@@ -50,13 +49,18 @@ async def validate_url(url: str) -> dict[str, str]:
         raise ValueError("URL must be a valid YouTube URL (youtube.com/watch or youtu.be)")
 
     try:
-        stdout, _ = await _run_ytdlp([
-            "--print", "%(title)s",
-            "--print", "%(duration_string)s",
-            "--print", "%(description)s",
-            "--no-download",
-            url,
-        ])
+        stdout, _ = await _run_ytdlp(
+            [
+                "--print",
+                "%(title)s",
+                "--print",
+                "%(duration_string)s",
+                "--print",
+                "%(description)s",
+                "--no-download",
+                url,
+            ]
+        )
     except RuntimeError as e:
         raise ValueError(f"Invalid or unavailable YouTube video: {e}") from e
 
@@ -94,13 +98,15 @@ async def download_audio(url: str, output_path: str) -> str:
     if not _is_youtube_url(url):
         raise ValueError("URL must be a valid YouTube URL (youtube.com/watch or youtu.be)")
 
-    await _run_ytdlp([
-        "-x",
-        "--audio-format",
-        "wav",
-        "-o",
-        output_path,
-        url,
-    ])
+    await _run_ytdlp(
+        [
+            "-x",
+            "--audio-format",
+            "wav",
+            "-o",
+            output_path,
+            url,
+        ]
+    )
 
     return output_path

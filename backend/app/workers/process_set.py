@@ -59,6 +59,7 @@ def _update_job_status(
         error_message: Optional error message
     """
     from uuid import UUID
+
     # Convert string job_id to UUID for querying
     job_uuid = UUID(job_id) if isinstance(job_id, str) else job_id
     job = session.query(Job).filter(Job.id == job_uuid).first()
@@ -88,7 +89,9 @@ def _update_job_status(
 def _log_event(session: Any, job_id: str, message: str, phase: str, progress: int) -> None:
     """Log a pipeline event to the job_events table."""
     from uuid import UUID
+
     from app.models.job_event import JobEvent
+
     job_uuid = UUID(job_id) if isinstance(job_id, str) else job_id
     event = JobEvent(
         job_id=job_uuid,
@@ -143,10 +146,7 @@ async def _batch_fingerprint_segments(
                 )
 
     # Create tasks for all segments
-    tasks = [
-        fingerprint_with_semaphore(segment, index)
-        for index, segment in enumerate(segments)
-    ]
+    tasks = [fingerprint_with_semaphore(segment, index) for index, segment in enumerate(segments)]
 
     # Run all tasks concurrently with semaphore limiting parallelism
     results = await asyncio.gather(*tasks)
@@ -189,7 +189,7 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
         audio_path = temp_dir / "audio.wav"
 
         asyncio.run(download_audio(youtube_url, str(audio_path)))
-        
+
         # Get file size for logging
         file_size_mb = audio_path.stat().st_size / (1024 * 1024) if audio_path.exists() else 0
         _update_job_status(session, job_id, JobStatus.DOWNLOADING, 10)
@@ -199,7 +199,7 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
         upload_result = asyncio.run(upload_audio(job_id, str(audio_path)))
         blob_name = f"{job_id}/audio.wav"
         _update_job_status(session, job_id, JobStatus.DOWNLOADING, 15)
-        
+
         # Log whether we uploaded to cloud or using local mode
         if upload_result and upload_result.startswith("local://"):
             _log_event(session, job_id, "Skipping cloud storage (local mode)", "DOWNLOADING", 15)
@@ -212,7 +212,7 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
         video_title = metadata["title"]
         duration_str = metadata["duration"]
         description = metadata["description"]
-        
+
         _log_event(session, job_id, f'Extracted metadata: "{video_title}"', "DOWNLOADING", 20)
 
         # Convert duration string to seconds (format: HH:MM:SS or MM:SS)
@@ -228,6 +228,7 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
 
         # Update job with metadata
         from uuid import UUID
+
         job_uuid = UUID(job_id) if isinstance(job_id, str) else job_id
         job = session.query(Job).filter(Job.id == job_uuid).first()
         if job:
@@ -239,17 +240,29 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
         # Note: parsed_tracklist could be used for cross-referencing in future
         parsed_tracklist = parse_tracklist(description)
         _update_job_status(session, job_id, JobStatus.DOWNLOADING, 25)
-        
+
         # Log tracklist parsing results
         if parsed_tracklist:
-            _log_event(session, job_id, f"Parsed description: found {len(parsed_tracklist)} tracks", "DOWNLOADING", 25)
+            _log_event(
+                session,
+                job_id,
+                f"Parsed description: found {len(parsed_tracklist)} tracks",
+                "DOWNLOADING",
+                25,
+            )
         else:
             _log_event(session, job_id, "No tracklist found in description", "DOWNLOADING", 25)
 
         # Step 6: Segment audio
         _update_job_status(session, job_id, JobStatus.SEGMENTING, 30)
-        _log_event(session, job_id, "Starting audio segmentation (12s windows, 6s hop)...", "SEGMENTING", 30)
-        
+        _log_event(
+            session,
+            job_id,
+            "Starting audio segmentation (12s windows, 6s hop)...",
+            "SEGMENTING",
+            30,
+        )
+
         segments_dir = temp_dir / "segments"
         segments = asyncio.run(
             segment_audio(
@@ -260,11 +273,23 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
             )
         )
         _update_job_status(session, job_id, JobStatus.SEGMENTING, 35)
-        _log_event(session, job_id, f"Created {len(segments)} segments for fingerprinting", "SEGMENTING", 35)
+        _log_event(
+            session,
+            job_id,
+            f"Created {len(segments)} segments for fingerprinting",
+            "SEGMENTING",
+            35,
+        )
 
         # Step 7: Fingerprint segments (batch with 10 concurrent requests)
         _update_job_status(session, job_id, JobStatus.FINGERPRINTING, 40)
-        _log_event(session, job_id, f"Starting track identification ({len(segments)} segments, 10 parallel)...", "FINGERPRINTING", 40)
+        _log_event(
+            session,
+            job_id,
+            f"Starting track identification ({len(segments)} segments, 10 parallel)...",
+            "FINGERPRINTING",
+            40,
+        )
 
         # Process segments in chunks to provide progress updates
         all_results = []
@@ -272,30 +297,54 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
         tracks_found = 0
 
         for i in range(0, len(segments), chunk_size):
-            chunk = segments[i:i + chunk_size]
+            chunk = segments[i : i + chunk_size]
             chunk_results = asyncio.run(_batch_fingerprint_segments(chunk, max_concurrent=10))
             all_results.extend(chunk_results)
             tracks_found = sum(1 for r in all_results if r.title is not None)
             completed = len(all_results)
             fp_progress = 40 + int((completed / len(segments)) * 40)
-            _log_event(session, job_id, f"Identified {completed}/{len(segments)} segments ({tracks_found} tracks found so far)", "FINGERPRINTING", fp_progress)
+            _log_event(
+                session,
+                job_id,
+                f"Identified {completed}/{len(segments)} segments "
+                f"({tracks_found} tracks found so far)",
+                "FINGERPRINTING",
+                fp_progress,
+            )
             _update_job_status(session, job_id, JobStatus.FINGERPRINTING, fp_progress)
 
         fingerprint_results = all_results
-        
+
         # Final fingerprinting log
         total_matched = sum(1 for r in fingerprint_results if r.title is not None)
         _update_job_status(session, job_id, JobStatus.FINGERPRINTING, 80)
-        _log_event(session, job_id, f"Fingerprinting complete: {total_matched}/{len(segments)} segments matched", "FINGERPRINTING", 80)
+        _log_event(
+            session,
+            job_id,
+            f"Fingerprinting complete: {total_matched}/{len(segments)} segments matched",
+            "FINGERPRINTING",
+            80,
+        )
 
         # Step 8: Aggregate results
         _update_job_status(session, job_id, JobStatus.AGGREGATING, 85)
-        _log_event(session, job_id, "Merging results and detecting transitions...", "AGGREGATING", 85)
-        
-        aggregated_tracks, unidentified_gaps = aggregate_results(fingerprint_results, confidence_threshold)
-        
+        _log_event(
+            session, job_id, "Merging results and detecting transitions...", "AGGREGATING", 85
+        )
+
+        aggregated_tracks, unidentified_gaps = aggregate_results(
+            fingerprint_results, confidence_threshold
+        )
+
         _update_job_status(session, job_id, JobStatus.AGGREGATING, 90)
-        _log_event(session, job_id, f"Found {len(aggregated_tracks)} tracks, {len(unidentified_gaps)} unidentified segments", "AGGREGATING", 90)
+        _log_event(
+            session,
+            job_id,
+            f"Found {len(aggregated_tracks)} tracks, "
+            f"{len(unidentified_gaps)} unidentified segments",
+            "AGGREGATING",
+            90,
+        )
 
         # Step 9: Cross-reference with parsed description (optional enhancement)
         # For now, we just store the aggregated results
@@ -303,6 +352,7 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
 
         # Step 10: Store tracks in database
         from uuid import UUID
+
         job_uuid = UUID(job_id) if isinstance(job_id, str) else job_id
         for aggregated_track in aggregated_tracks:
             track = Track(
@@ -355,6 +405,7 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
         # Clean up temp directory
         if temp_dir and temp_dir.exists():
             import shutil
+
             shutil.rmtree(temp_dir, ignore_errors=True)
 
         session.close()

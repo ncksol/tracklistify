@@ -43,15 +43,11 @@ class Job(Base):
     progress: Mapped[int] = mapped_column(default=0, nullable=False)
     error_message: Mapped[str | None] = mapped_column(String, nullable=True)
     share_slug: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        default=datetime.utcnow, nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     # Relationships
-    tracks: Mapped[list[Track]] = relationship(
-        back_populates="job", cascade="all, delete-orphan"
-    )
+    tracks: Mapped[list[Track]] = relationship(back_populates="job", cascade="all, delete-orphan")
     unidentified_segments: Mapped[list[UnidentifiedSegment]] = relationship(
         cascade="all, delete-orphan"
     )

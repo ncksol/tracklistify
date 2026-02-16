@@ -243,9 +243,7 @@ async def generate_share_link(
             return ShareResponse(slug=slug, url=f"/share/{slug}")
 
     # If we couldn't generate a unique slug after max_attempts
-    raise HTTPException(
-        status_code=500, detail="Failed to generate unique share link"
-    )
+    raise HTTPException(status_code=500, detail="Failed to generate unique share link")
 
 
 @share_router.get("/{slug}")

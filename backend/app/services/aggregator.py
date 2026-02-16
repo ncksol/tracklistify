@@ -178,7 +178,11 @@ def aggregate_results(
 
         # Valid match found
         if unmatched_run:
-            if current_track is not None and len(unmatched_run) <= 2 and _tracks_match(segment, current_track.segments[-1]):
+            if (
+                current_track is not None
+                and len(unmatched_run) <= 2
+                and _tracks_match(segment, current_track.segments[-1])
+            ):
                 # Same track resumes after a short gap — bridge it
                 current_track.segments.append(segment)
                 current_track.end_ms = segment.end_ms

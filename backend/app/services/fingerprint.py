@@ -37,14 +37,16 @@ async def identify_segment(audio_path: str) -> dict[str, Any] | None:
     timestamp = str(int(time.time()))
 
     # Build string to sign
-    string_to_sign = "\n".join([
-        http_method,
-        http_uri,
-        access_key,
-        data_type,
-        signature_version,
-        timestamp,
-    ])
+    string_to_sign = "\n".join(
+        [
+            http_method,
+            http_uri,
+            access_key,
+            data_type,
+            signature_version,
+            timestamp,
+        ]
+    )
 
     # Create HMAC-SHA1 signature
     signature = base64.b64encode(
@@ -73,7 +75,10 @@ async def identify_segment(audio_path: str) -> dict[str, Any] | None:
             form.add_field("signature_version", signature_version)
             form.add_field("signature", signature)
             form.add_field("timestamp", timestamp)
-            async with aiohttp.ClientSession(timeout=timeout) as session, session.post(url, data=form) as response:
+            async with (
+                aiohttp.ClientSession(timeout=timeout) as session,
+                session.post(url, data=form) as response,
+            ):
                 if response.status != 200:
                     return None
                 result = await response.json(content_type=None)
@@ -81,7 +86,7 @@ async def identify_segment(audio_path: str) -> dict[str, Any] | None:
         except (aiohttp.ClientError, TimeoutError):
             if attempt == 2:
                 return None
-            await asyncio.sleep(2 ** attempt)
+            await asyncio.sleep(2**attempt)
 
     # Parse response
     if result.get("status", {}).get("code") != 0:

@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
-
-if TYPE_CHECKING:
-    from app.models.job import Job
 
 
 class JobEvent(Base):
@@ -21,9 +17,7 @@ class JobEvent(Base):
     __tablename__ = "job_events"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    job_id: Mapped[UUID] = mapped_column(
-        ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
-    )
+    job_id: Mapped[UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
     timestamp: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
     message: Mapped[str] = mapped_column(String, nullable=False)
     phase: Mapped[str] = mapped_column(String, nullable=False)

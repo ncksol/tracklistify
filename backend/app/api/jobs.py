@@ -428,16 +428,13 @@ async def get_job_tracklist(
     sorted_tracks = sorted(job.tracks, key=lambda t: t.start_time_ms)
 
     # Sort unidentified segments by start_time_ms
-    sorted_unidentified = sorted(
-        job.unidentified_segments, key=lambda u: u.start_time_ms
-    )
+    sorted_unidentified = sorted(job.unidentified_segments, key=lambda u: u.start_time_ms)
 
     return TracklistResponse(
         job_id=job.id,
         tracks=[TrackResponse.model_validate(track) for track in sorted_tracks],
         unidentified_segments=[
-            UnidentifiedSegmentResponse.model_validate(segment)
-            for segment in sorted_unidentified
+            UnidentifiedSegmentResponse.model_validate(segment) for segment in sorted_unidentified
         ],
     )
 
@@ -472,9 +469,7 @@ async def get_job_waveform(
         raise HTTPException(status_code=404, detail="Job not found")
 
     if job.status.value != "COMPLETE":
-        raise HTTPException(
-            status_code=404, detail="Waveform only available for completed jobs"
-        )
+        raise HTTPException(status_code=404, detail="Waveform only available for completed jobs")
 
     if job.duration_seconds is None:
         raise HTTPException(status_code=404, detail="Job duration not available")
