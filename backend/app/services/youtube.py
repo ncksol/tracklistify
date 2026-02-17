@@ -1,6 +1,7 @@
 """YouTube download service using yt-dlp."""
 
 import asyncio
+import os
 import re
 
 
@@ -13,10 +14,19 @@ def _is_youtube_url(url: str) -> bool:
     return any(re.match(pattern, url) for pattern in youtube_patterns)
 
 
+def _get_cookies_args() -> list[str]:
+    """Return yt-dlp cookies arguments if a cookies file is available."""
+    cookies_file = os.getenv("YTDLP_COOKIES_FILE", "/app/cookies/cookies.txt")
+    if os.path.isfile(cookies_file):
+        return ["--cookies", cookies_file]
+    return []
+
+
 async def _run_ytdlp(args: list[str]) -> tuple[str, str]:
     """Run yt-dlp with given arguments and return stdout, stderr."""
     process = await asyncio.create_subprocess_exec(
         "yt-dlp",
+        *_get_cookies_args(),
         *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
