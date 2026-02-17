@@ -32,14 +32,19 @@ def _get_cookies_args() -> list[str]:
     return []
 
 
+_YTDLP_BASE = ["yt-dlp", "--js-runtimes", "node", "--remote-components", "ejs:github"]
+
+
 async def _run_ytdlp(args: list[str]) -> tuple[str, str]:
-    """Run yt-dlp with given arguments and return stdout, stderr."""
+    """Run yt-dlp with given arguments and return stdout, stderr.
+
+    If cookies are available, tries with cookies first.
+    Falls back to running without cookies on failure.
+    """
     cookies_args = _get_cookies_args()
     try:
         process = await asyncio.create_subprocess_exec(
-            "yt-dlp",
-            "--js-runtimes",
-            "node",
+            *_YTDLP_BASE,
             *cookies_args,
             *args,
             stdout=asyncio.subprocess.PIPE,
@@ -47,12 +52,29 @@ async def _run_ytdlp(args: list[str]) -> tuple[str, str]:
         )
         stdout, stderr = await process.communicate()
     finally:
-        # Clean up temp cookies file if one was created
         if cookies_args:
             with contextlib.suppress(OSError):
                 os.unlink(cookies_args[1])
 
-    if process.returncode != 0:
+    if process.returncode != 0 and cookies_args:
+        first_stderr = stderr.decode().strip()
+        # Retry without cookies - they may be expired
+        process = await asyncio.create_subprocess_exec(
+            *_YTDLP_BASE,
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            raise RuntimeError(
+                f"yt-dlp failed (retry without cookies also failed).\n"
+                f"Original error: {first_stderr}\n"
+                f"Retry error: {stderr.decode().strip()}"
+            )
+
+    elif process.returncode != 0:
         raise RuntimeError(
             f"yt-dlp failed with exit code {process.returncode}: {stderr.decode().strip()}"
         )
