@@ -9,6 +9,7 @@ ENV PYTHONUNBUFFERED=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     build-essential \
+    nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -23,6 +24,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app/ ./app/
+
+# Create cookies directory for optional YouTube cookies mount
+RUN mkdir -p /app/cookies
 
 # Expose port
 EXPOSE 8000
