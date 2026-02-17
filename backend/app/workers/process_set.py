@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import logging
 import os
 import tempfile
 from datetime import datetime
@@ -26,6 +27,8 @@ from app.workers.celery_app import celery_app
 
 # Load environment variables
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 _sync_engine: Any = None
 _SyncSessionMaker: Any = None
@@ -196,6 +199,7 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
         # Step 1: Update status to DOWNLOADING
         _update_job_status(session, job_id, JobStatus.DOWNLOADING, 5)
         _log_event(session, job_id, "Starting audio download...", "DOWNLOADING", 5)
+        logger.info("[%s] Starting audio download from %s", job_id, youtube_url)
 
         # Step 2: Download audio to temp directory
         temp_dir = Path(tempfile.mkdtemp(prefix="tracklistify_"))
@@ -207,8 +211,10 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
         file_size_mb = audio_path.stat().st_size / (1024 * 1024) if audio_path.exists() else 0
         _update_job_status(session, job_id, JobStatus.DOWNLOADING, 10)
         _log_event(session, job_id, f"Audio downloaded ({file_size_mb:.1f} MB)", "DOWNLOADING", 10)
+        logger.info("[%s] Audio downloaded (%.1f MB)", job_id, file_size_mb)
 
         # Step 3: Upload to Azure Blob Storage
+        logger.info("[%s] Uploading audio to blob storage...", job_id)
         upload_result = asyncio.run(upload_audio(job_id, str(audio_path)))
         blob_name = f"{job_id}/audio.wav"
         _update_job_status(session, job_id, JobStatus.DOWNLOADING, 15)
@@ -407,6 +413,7 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
     except Exception as e:
         # Handle any errors
         error_message = f"{type(e).__name__}: {str(e)}"
+        logger.exception("[%s] Task failed: %s", job_id, error_message)
         _update_job_status(session, job_id, JobStatus.FAILED, 0, error_message)
 
         # Attempt cleanup even on failure
