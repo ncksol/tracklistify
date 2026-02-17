@@ -28,6 +28,7 @@ async def _run_ytdlp(args: list[str]) -> tuple[str, str]:
     """Run yt-dlp with given arguments and return stdout, stderr."""
     process = await asyncio.create_subprocess_exec(
         "yt-dlp",
+        "--js-runtimes", "nodejs",
         *_get_cookies_args(),
         *args,
         stdout=asyncio.subprocess.PIPE,
