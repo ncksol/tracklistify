@@ -83,11 +83,10 @@ async def upload_audio(job_id: str, file_path: str) -> str:
         with contextlib.suppress(Exception):
             await container_client.create_container()
 
-        # Upload the file
+        # Upload the file (stream from disk to avoid loading into memory)
         blob_client = container_client.get_blob_client(blob_name)
-        async with aiofiles.open(file_path, "rb") as data:
-            content = await data.read()
-            await blob_client.upload_blob(content, overwrite=True)
+        with open(file_path, "rb") as data:
+            await blob_client.upload_blob(data, overwrite=True)
 
         return blob_client.url
 
