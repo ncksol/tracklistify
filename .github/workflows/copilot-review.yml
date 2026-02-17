@@ -1,0 +1,17 @@
+name: Auto-assign Copilot Review
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  assign-copilot:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Request Copilot review
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers \
+            --method POST --field 'reviewers[]=copilot'
