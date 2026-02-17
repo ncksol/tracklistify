@@ -1,6 +1,8 @@
 """Celery application configuration with Redis broker."""
 
+import logging
 import os
+import sys
 
 from celery import Celery  # type: ignore[import-untyped]
 from dotenv import load_dotenv
@@ -56,3 +58,10 @@ celery_app.conf.update(
 
 # Explicitly include task modules (autodiscover looks for tasks.py by default)
 celery_app.conf.update(include=["app.workers.process_set"])
+
+# Configure logging so child worker output is visible in container logs
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    stream=sys.stdout,
+)
