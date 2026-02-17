@@ -1,8 +1,11 @@
 """YouTube download service using yt-dlp."""
 
 import asyncio
+import contextlib
 import os
 import re
+import shutil
+import tempfile
 
 
 def _is_youtube_url(url: str) -> bool:
@@ -15,25 +18,39 @@ def _is_youtube_url(url: str) -> bool:
 
 
 def _get_cookies_args() -> list[str]:
-    """Return yt-dlp cookies arguments if a cookies file is available."""
+    """Return yt-dlp cookies arguments if a cookies file is available.
+
+    Copies to a temp file because yt-dlp writes back to the cookies file
+    and the source mount may be read-only.
+    """
     cookies_file = os.getenv("YTDLP_COOKIES_FILE", "/app/cookies/cookies.txt")
     if os.path.isfile(cookies_file):
-        return ["--cookies", cookies_file]
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".txt")
+        os.close(tmp_fd)
+        shutil.copy2(cookies_file, tmp_path)
+        return ["--cookies", tmp_path]
     return []
 
 
 async def _run_ytdlp(args: list[str]) -> tuple[str, str]:
     """Run yt-dlp with given arguments and return stdout, stderr."""
-    process = await asyncio.create_subprocess_exec(
-        "yt-dlp",
-        "--js-runtimes",
-        "nodejs",
-        *_get_cookies_args(),
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await process.communicate()
+    cookies_args = _get_cookies_args()
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "yt-dlp",
+            "--js-runtimes",
+            "node",
+            *cookies_args,
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+    finally:
+        # Clean up temp cookies file if one was created
+        if cookies_args:
+            with contextlib.suppress(OSError):
+                os.unlink(cookies_args[1])
 
     if process.returncode != 0:
         raise RuntimeError(
