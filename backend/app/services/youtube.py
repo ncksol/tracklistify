@@ -14,13 +14,11 @@ def _is_youtube_url(url: str) -> bool:
     return any(re.match(pattern, url) for pattern in youtube_patterns)
 
 
-_COOKIES_FILE = os.getenv("YTDLP_COOKIES_FILE", "/app/cookies/cookies.txt")
-
-
 def _get_cookies_args() -> list[str]:
     """Return yt-dlp cookies arguments if a cookies file is available."""
-    if os.path.isfile(_COOKIES_FILE):
-        return ["--cookies", _COOKIES_FILE]
+    cookies_file = os.getenv("YTDLP_COOKIES_FILE", "/app/cookies/cookies.txt")
+    if os.path.isfile(cookies_file):
+        return ["--cookies", cookies_file]
     return []
 
 
