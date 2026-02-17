@@ -3,6 +3,7 @@ uvicorn[standard]==0.32.1
 celery[redis]==5.4.0
 sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
+psycopg2-binary==2.9.10
 pydub==0.25.1
 aiohttp==3.11.10
 python-dotenv==1.0.1
