@@ -72,6 +72,9 @@ def segment_audio(
         - start_ms: Start timestamp in milliseconds
         - end_ms: End timestamp in milliseconds
 
+    Raises:
+        RuntimeError: If ffprobe/ffmpeg fails or times out
+
     Example:
         >>> segments = await segment_audio("mix.mp3", "/tmp/segments")
         >>> segments[0]
