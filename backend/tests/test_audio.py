@@ -53,6 +53,16 @@ class TestGetAudioDuration:
         ):
             get_audio_duration(temp_audio_path)
 
+    def test_raises_on_ffprobe_timeout(self, temp_audio_path):
+        """Test that get_audio_duration raises RuntimeError on timeout."""
+        import subprocess
+
+        with (
+            patch("subprocess.run", side_effect=subprocess.TimeoutExpired("ffprobe", 60)),
+            pytest.raises(RuntimeError, match="ffprobe timed out"),
+        ):
+            get_audio_duration(temp_audio_path)
+
     def test_raises_on_invalid_duration_output(self, temp_audio_path):
         """Test that get_audio_duration raises RuntimeError on invalid output."""
         mock_result = MagicMock()
@@ -243,6 +253,17 @@ class TestSegmentAudio:
             with (
                 patch("subprocess.run", return_value=mock_result),
                 pytest.raises(RuntimeError, match="ffmpeg failed for segment 0"),
+            ):
+                segment_audio(temp_audio_path, temp_output_dir)
+
+    def test_raises_on_ffmpeg_timeout(self, temp_audio_path, temp_output_dir):
+        """Test that segment_audio raises RuntimeError with segment context on timeout."""
+        import subprocess
+
+        with patch("app.services.audio.get_audio_duration", return_value=12.0):
+            with (
+                patch("subprocess.run", side_effect=subprocess.TimeoutExpired("ffmpeg", 30)),
+                pytest.raises(RuntimeError, match="ffmpeg timed out.*segment 0"),
             ):
                 segment_audio(temp_audio_path, temp_output_dir)
 

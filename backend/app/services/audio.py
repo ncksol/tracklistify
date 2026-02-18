@@ -18,21 +18,24 @@ def get_audio_duration(file_path: str) -> float:
     Raises:
         RuntimeError: If ffprobe fails or returns invalid output
     """
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            file_path,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                file_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"ffprobe timed out after 60s for {file_path}")
 
     if result.returncode != 0:
         raise RuntimeError(f"ffprobe failed with return code {result.returncode}: {result.stderr}")
@@ -102,28 +105,34 @@ def segment_audio(
 
         # Run FFmpeg to extract segment
         # -ss before -i enables fast input seeking (byte-accurate for WAV)
-        result = subprocess.run(
-            [
-                "ffmpeg",
-                "-ss",
-                str(start_seconds),
-                "-i",
-                input_path,
-                "-t",
-                str(duration_seconds),
-                "-acodec",
-                "pcm_s16le",
-                "-ar",
-                "16000",
-                "-ac",
-                "1",
-                "-y",
-                str(segment_path),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
+        try:
+            result = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-ss",
+                    str(start_seconds),
+                    "-i",
+                    input_path,
+                    "-t",
+                    str(duration_seconds),
+                    "-acodec",
+                    "pcm_s16le",
+                    "-ar",
+                    "16000",
+                    "-ac",
+                    "1",
+                    "-y",
+                    str(segment_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(
+                f"ffmpeg timed out after 30s for segment {segment_index} "
+                f"(start={start_seconds}s)"
+            )
 
         if result.returncode != 0:
             raise RuntimeError(
