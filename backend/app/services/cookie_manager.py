@@ -180,7 +180,7 @@ async def probe_cookie(
         os.write(tmp_fd, cookie_content)
         os.close(tmp_fd)
 
-        # Run yt-dlp with short timeouts. This can take up to ~20s total:
+        # Run yt-dlp with short timeouts. This can take up to ~30s total:
         # one timeout for process spawn and one timeout for process communicate.
         try:
             from app.services.youtube import _YTDLP_BASE

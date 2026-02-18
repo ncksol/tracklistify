@@ -226,9 +226,6 @@ def process_dj_set(
                 # Promote fresh upload to canonical for reuse by future jobs
                 try:
                     asyncio.run(save_canonical_cookie(cookie_content))
-                    _canonical_cookie_probe_valid_until = datetime.utcnow() + timedelta(
-                        seconds=_CANONICAL_COOKIE_PROBE_TTL_SECONDS
-                    )
                 except Exception:
                     logger.warning(
                         "[%s] Failed to promote uploaded cookie to canonical",
