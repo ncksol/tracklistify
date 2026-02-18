@@ -25,8 +25,25 @@ function isValidYouTubeUrl(url: string): boolean {
 
 export default function SubmitForm({ onJobCreated }: SubmitFormProps) {
   const [url, setUrl] = useState('');
+  const [cookieFile, setCookieFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.name.endsWith('.txt')) {
+        setError('Please select a .txt file');
+        e.target.value = ''; // Clear the input
+        return;
+      }
+      setCookieFile(file);
+      setError(null);
+    } else {
+      setCookieFile(null);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,9 +64,13 @@ export default function SubmitForm({ onJobCreated }: SubmitFormProps) {
 
     try {
       const threshold = parseFloat(localStorage.getItem('confidence_threshold') || '0.5');
-      const job = await createJob(url, false, threshold);
+      const job = await createJob(url, false, threshold, cookieFile || undefined);
       onJobCreated(job.id);
       setUrl(''); // Clear input on success
+      setCookieFile(null); // Clear file on success
+      // Reset file input
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create job');
     } finally {
@@ -69,6 +90,18 @@ export default function SubmitForm({ onJobCreated }: SubmitFormProps) {
             disabled={isLoading}
             className="w-full px-4 py-3 text-lg text-carbon border border-brick rounded-lg focus:ring-2 focus:ring-paprika focus:border-transparent disabled:bg-brick-light disabled:cursor-not-allowed placeholder:text-carbon/40"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-carbon mb-2">Cookies (optional)</label>
+          <input
+            type="file"
+            accept=".txt"
+            onChange={handleFileChange}
+            disabled={isLoading}
+            className="w-full px-4 py-2 text-sm text-carbon border border-brick rounded-lg file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-paprika file:text-white hover:file:bg-saffron file:cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+          />
+          {cookieFile && <p className="mt-1 text-xs text-carbon/60">Selected: {cookieFile.name}</p>}
         </div>
 
         <button

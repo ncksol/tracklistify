@@ -1,10 +1,11 @@
 """Jobs API endpoints."""
 
+import logging
 import random
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,10 +16,16 @@ from app.models.job import Job, JobStatus
 from app.models.job_event import JobEvent
 from app.models.track import Track
 from app.models.unidentified import UnidentifiedSegment
+from app.services.cookie_manager import (
+    probe_cookie,
+    save_canonical_cookie,
+    save_job_cookie,
+)
 from app.services.youtube import validate_url
 from app.workers.process_set import process_dj_set
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+logger = logging.getLogger(__name__)
 
 
 # Simple in-memory rate limiter for job submissions
@@ -63,6 +70,48 @@ class JobCreateRequest(BaseModel):
     url: str
     force: bool = False
     confidence_threshold: float = 0.50
+
+
+# Cookie upload constants
+_MAX_COOKIE_SIZE_BYTES = 1024 * 1024  # 1 MB
+_ALLOWED_COOKIE_EXTENSIONS = {".txt"}
+
+
+async def _validate_cookie_file(cookie_file: UploadFile) -> bytes:
+    """Validate and read uploaded cookie file.
+
+    Args:
+        cookie_file: Uploaded cookie file
+
+    Returns:
+        Cookie file content as bytes
+
+    Raises:
+        HTTPException: 400 if validation fails
+    """
+    # Check file extension
+    if not cookie_file.filename:
+        raise HTTPException(status_code=400, detail="Cookie file must have a filename")
+
+    file_ext = "." + cookie_file.filename.rsplit(".", 1)[-1].lower()
+    if file_ext not in _ALLOWED_COOKIE_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cookie file must be a .txt file, got: {file_ext}",
+        )
+
+    # Read and check size
+    cookie_content = await cookie_file.read()
+    if len(cookie_content) > _MAX_COOKIE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cookie file too large (max {_MAX_COOKIE_SIZE_BYTES / 1024:.0f} KB)",
+        )
+
+    if len(cookie_content) == 0:
+        raise HTTPException(status_code=400, detail="Cookie file is empty")
+
+    return cookie_content
 
 
 def _generate_placeholder_waveform(job_id: UUID, duration_seconds: int) -> list[float]:
@@ -273,45 +322,115 @@ async def list_jobs(
 
 @router.post("", response_model=JobResponse, status_code=201)
 async def create_job(
-    request: JobCreateRequest,
+    request: JobCreateRequest | None = None,
+    url: str | None = Form(None),
+    force: bool = Form(False),
+    confidence_threshold: float = Form(0.50),
+    cookie_file: UploadFile | None = File(None),
+    content_type: str | None = Header(default=None, alias="Content-Type"),
     session: AsyncSession = Depends(get_session),
 ) -> JobResponse:
     """
     Create a new DJ set processing job.
+
+    Accepts both JSON and multipart/form-data requests:
+    - JSON: Standard request with JobCreateRequest schema
+    - Multipart: url, force, confidence_threshold as form fields,
+                 optional cookie_file as file upload
 
     Validates the YouTube URL and checks if a completed job already exists
     for the same URL. If found, returns the existing job. Otherwise, creates
     a new job and enqueues it for processing.
 
     Args:
-        request: Request body containing the YouTube URL
+        request: JSON request body (optional, for JSON requests)
+        url: YouTube URL (for multipart requests)
+        force: Force reanalysis flag (for multipart requests)
+        confidence_threshold: Minimum confidence score (for multipart requests)
+        cookie_file: Optional YouTube cookie file upload
         session: Database session
 
     Returns:
         JobResponse: Created or existing job details
 
     Raises:
-        HTTPException: 400 if URL validation fails, 429 if rate limit exceeded
+        HTTPException: 400 if URL validation fails or cookie invalid,
+                       429 if rate limit exceeded
     """
     # Check rate limit
     _check_rate_limit()
 
+    # Determine request type using Content-Type (boundary-safe for multipart)
+    normalized_content_type = (content_type or "").lower()
+    is_multipart = normalized_content_type.startswith("multipart/form-data")
+
+    if is_multipart:
+        # Multipart request
+        if url is None:
+            raise HTTPException(status_code=400, detail="url field is required")
+        job_url = url
+        job_force = force
+        job_confidence_threshold = confidence_threshold
+
+        # Handle optional cookie file upload
+        job_cookie_blob_ref = None
+        if cookie_file and cookie_file.filename:
+            cookie_content = await _validate_cookie_file(cookie_file)
+
+            # Probe cookie validity
+            is_valid = await probe_cookie(cookie_content)
+            if not is_valid:
+                logger.warning("Uploaded cookie validation failed, falling back to saved/no cookie")
+                job_cookie_blob_ref = None
+            else:
+                # Valid cookie - save it for this job and promote to canonical
+                import uuid
+
+                temp_job_id = str(uuid.uuid4())
+                try:
+                    job_cookie_blob_ref = await save_job_cookie(temp_job_id, cookie_content)
+                except ValueError:
+                    logger.warning("Cookie storage unavailable, falling back to saved/no cookie")
+                    job_cookie_blob_ref = None
+
+                # Promote valid uploaded cookie to canonical for future runs
+                try:
+                    await save_canonical_cookie(cookie_content)
+                    logger.info("Valid uploaded cookie promoted to canonical")
+                except Exception:
+                    logger.warning("Failed to promote cookie to canonical")
+                    # Don't fail the request if promotion fails
+    else:
+        # JSON request
+        if request is None:
+            raise HTTPException(status_code=400, detail="JSON request body is required")
+        job_url = request.url
+        job_force = request.force
+        job_confidence_threshold = request.confidence_threshold
+        job_cookie_blob_ref = None
+
     # Validate YouTube URL
     try:
-        await validate_url(request.url)
+        await validate_url(job_url)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Check cache: if a COMPLETE job exists for this URL, return it (unless force reanalyse)
-    if not request.force:
+    if not job_force:
         stmt = select(Job).where(
-            Job.youtube_url == request.url,
+            Job.youtube_url == job_url,
             Job.status == JobStatus.COMPLETE,
         )
         result = await session.execute(stmt)
         existing_job = result.scalar_one_or_none()
 
         if existing_job:
+            # Clean up uploaded cookie if not needed
+            if job_cookie_blob_ref:
+                from app.services.cookie_manager import delete_job_cookie
+
+                await delete_job_cookie(job_cookie_blob_ref)
+
             return JobResponse(
                 id=existing_job.id,
                 youtube_url=existing_job.youtube_url,
@@ -327,8 +446,8 @@ async def create_job(
 
     # Create new job with QUEUED status
     new_job = Job(
-        youtube_url=request.url,
-        confidence_threshold=request.confidence_threshold,
+        youtube_url=job_url,
+        confidence_threshold=job_confidence_threshold,
         status=JobStatus.QUEUED,
         progress=0,
     )
@@ -336,8 +455,26 @@ async def create_job(
     await session.commit()
     await session.refresh(new_job)
 
+    # If we have a cookie blob ref with temp ID, rename it to actual job ID
+    if job_cookie_blob_ref:
+        # Delete temp and re-upload with correct job ID
+        from app.services.cookie_manager import delete_job_cookie, get_job_cookie
+
+        cookie_content = await get_job_cookie(job_cookie_blob_ref)
+        await delete_job_cookie(job_cookie_blob_ref)
+
+        if cookie_content:
+            job_cookie_blob_ref = await save_job_cookie(str(new_job.id), cookie_content)
+        else:
+            job_cookie_blob_ref = None
+
     # Enqueue Celery task for processing
-    process_dj_set.delay(str(new_job.id), request.url, request.confidence_threshold)
+    process_dj_set.delay(
+        str(new_job.id),
+        job_url,
+        job_confidence_threshold,
+        job_cookie_blob_ref,
+    )
 
     return JobResponse(
         id=new_job.id,

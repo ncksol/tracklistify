@@ -17,13 +17,20 @@ def _is_youtube_url(url: str) -> bool:
     return any(re.match(pattern, url) for pattern in youtube_patterns)
 
 
-def _get_cookies_args() -> list[str]:
+def _get_cookies_args(cookie_path: str | None = None) -> list[str]:
     """Return yt-dlp cookies arguments if a cookies file is available.
 
     Copies to a temp file because yt-dlp writes back to the cookies file
     and the source mount may be read-only.
+
+    Args:
+        cookie_path: Optional explicit cookie file path to use
+
+    Returns:
+        List of yt-dlp arguments for cookies, or empty list if no cookie available
     """
-    cookies_file = os.getenv("YTDLP_COOKIES_FILE", "/app/cookies/cookies.txt")
+    cookies_file = cookie_path or os.getenv("YTDLP_COOKIES_FILE", "/app/cookies/cookies.txt")
+
     if os.path.isfile(cookies_file):
         tmp_fd, tmp_path = tempfile.mkstemp(suffix=".txt")
         os.close(tmp_fd)
@@ -35,13 +42,20 @@ def _get_cookies_args() -> list[str]:
 _YTDLP_BASE = ["yt-dlp", "--js-runtimes", "node", "--remote-components", "ejs:github"]
 
 
-async def _run_ytdlp(args: list[str]) -> tuple[str, str]:
+async def _run_ytdlp(args: list[str], cookie_path: str | None = None) -> tuple[str, str]:
     """Run yt-dlp with given arguments and return stdout, stderr.
 
     If cookies are available, tries with cookies first.
     Falls back to running without cookies on failure.
+
+    Args:
+        args: yt-dlp command line arguments
+        cookie_path: Optional explicit cookie file path to use
+
+    Returns:
+        Tuple of (stdout, stderr) as strings
     """
-    cookies_args = _get_cookies_args()
+    cookies_args = _get_cookies_args(cookie_path)
     try:
         process = await asyncio.create_subprocess_exec(
             *_YTDLP_BASE,
@@ -82,12 +96,13 @@ async def _run_ytdlp(args: list[str]) -> tuple[str, str]:
     return stdout.decode().strip(), stderr.decode().strip()
 
 
-async def validate_url(url: str) -> dict[str, str]:
+async def validate_url(url: str, cookie_path: str | None = None) -> dict[str, str]:
     """
     Validate YouTube URL and extract metadata.
 
     Args:
         url: YouTube video URL
+        cookie_path: Optional explicit cookie file path to use
 
     Returns:
         Dictionary with 'title', 'duration', and 'description' keys
@@ -110,7 +125,8 @@ async def validate_url(url: str) -> dict[str, str]:
                 "%(description)s",
                 "--no-download",
                 url,
-            ]
+            ],
+            cookie_path=cookie_path,
         )
     except RuntimeError as e:
         raise ValueError(f"Invalid or unavailable YouTube video: {e}") from e
@@ -131,13 +147,14 @@ async def validate_url(url: str) -> dict[str, str]:
     }
 
 
-async def download_audio(url: str, output_path: str) -> str:
+async def download_audio(url: str, output_path: str, cookie_path: str | None = None) -> str:
     """
     Download audio from YouTube video as WAV file.
 
     Args:
         url: YouTube video URL
         output_path: Path where the WAV file should be saved
+        cookie_path: Optional explicit cookie file path to use
 
     Returns:
         Path to the downloaded WAV file
@@ -157,7 +174,8 @@ async def download_audio(url: str, output_path: str) -> str:
             "-o",
             output_path,
             url,
-        ]
+        ],
+        cookie_path=cookie_path,
     )
 
     return output_path
