@@ -1,7 +1,10 @@
 """Jobs API endpoints."""
 
+import contextlib
 import logging
+import os
 import random
+import tempfile
 from datetime import datetime, timedelta
 from uuid import UUID
 
@@ -400,11 +403,20 @@ async def create_job(
         job_confidence_threshold = request.confidence_threshold
         cookie_content_to_save = None
 
-    # Validate YouTube URL
+    # Validate YouTube URL (use uploaded cookie if available)
+    cookie_temp_path: str | None = None
     try:
-        await validate_url(job_url)
+        if cookie_content_to_save:
+            tmp_fd, cookie_temp_path = tempfile.mkstemp(suffix=".txt")
+            os.write(tmp_fd, cookie_content_to_save)
+            os.close(tmp_fd)
+        await validate_url(job_url, cookie_path=cookie_temp_path)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    finally:
+        if cookie_temp_path:
+            with contextlib.suppress(OSError):
+                os.unlink(cookie_temp_path)
 
     # Check cache: if a COMPLETE job exists for this URL, return it (unless force reanalyse)
     if not job_force:

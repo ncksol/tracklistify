@@ -112,6 +112,8 @@ async def test_json_backward_compat(
     assert response.json()["status"] == "QUEUED"
     assert mock_process.delay.called
     assert mock_process.delay.call_args[0][3] is None
+    # JSON requests should not pass a cookie to validate_url
+    assert mock_validate.call_args.kwargs.get("cookie_path") is None
 
 
 @patch("app.api.jobs.save_job_cookie", new_callable=AsyncMock)
@@ -146,6 +148,8 @@ async def test_multipart_cookie_saved_with_final_job_id(
     assert mock_save_job.call_count == 1
     assert mock_save_job.call_args.args[0] == str(response.id)
     assert mock_process.delay.call_args[0][3] == "saved-cookie-ref"
+    # validate_url must receive cookie_path so validation uses the uploaded cookie
+    assert mock_validate.call_args.kwargs.get("cookie_path") is not None
 
 
 @patch("app.api.jobs.validate_url", new_callable=AsyncMock)
