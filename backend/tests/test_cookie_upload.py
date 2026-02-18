@@ -46,7 +46,7 @@ async def async_session():
 
 @pytest.fixture
 def sync_session():
-    """Create a sync in-memory DB session for worker task test."""
+    """Create a sync in-memory DB session for worker task tests."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     session_maker = sessionmaker(bind=engine)
@@ -84,14 +84,6 @@ def valid_cookie() -> bytes:
     )
 
 
-@pytest.fixture
-def invalid_cookie() -> bytes:
-    return (
-        b"# Netscape HTTP Cookie File\n"
-        b".youtube.com\tTRUE\t/\tTRUE\t0\tVISITOR_INFO1_LIVE\texpired_token\n"
-    )
-
-
 @patch("app.api.jobs.process_dj_set")
 @patch("app.api.jobs.validate_url", new_callable=AsyncMock)
 @patch("app.api.jobs._check_rate_limit")
@@ -122,33 +114,23 @@ async def test_json_backward_compat(
     assert mock_process.delay.call_args[0][3] is None
 
 
-@patch("app.services.cookie_manager.delete_job_cookie", new_callable=AsyncMock)
-@patch("app.services.cookie_manager.get_job_cookie", new_callable=AsyncMock)
 @patch("app.api.jobs.save_job_cookie", new_callable=AsyncMock)
-@patch("app.api.jobs.save_canonical_cookie", new_callable=AsyncMock)
-@patch("app.api.jobs.probe_cookie", new_callable=AsyncMock)
 @patch("app.api.jobs.process_dj_set")
 @patch("app.api.jobs.validate_url", new_callable=AsyncMock)
 @patch("app.api.jobs._check_rate_limit")
 @pytest.mark.asyncio
-async def test_valid_cookie_promotion(
+async def test_multipart_cookie_saved_with_final_job_id(
     mock_rate_limit: MagicMock,
     mock_validate: AsyncMock,
     mock_process: MagicMock,
-    mock_probe: AsyncMock,
-    mock_save_canonical: AsyncMock,
     mock_save_job: AsyncMock,
-    mock_get_job_cookie: AsyncMock,
-    mock_delete_job_cookie: AsyncMock,
     async_session: AsyncSession,
     valid_cookie: bytes,
 ):
-    """Valid uploaded cookie is saved for the job and promoted to canonical."""
+    """Multipart upload saves cookie directly under final job ID."""
     mock_validate.return_value = None
-    mock_probe.return_value = True
-    mock_get_job_cookie.return_value = valid_cookie
-    mock_save_job.side_effect = ["temp-job/cookies.txt", "final-job/cookies.txt"]
     mock_process.delay = MagicMock(return_value=None)
+    mock_save_job.return_value = "saved-cookie-ref"
 
     response = await create_job(
         raw_request=MagicMock(),
@@ -161,50 +143,35 @@ async def test_valid_cookie_promotion(
     )
 
     assert response.status == "QUEUED"
-    assert mock_probe.called
-    assert mock_save_job.call_count == 2
-    assert mock_save_canonical.called
-    assert mock_delete_job_cookie.called
-    assert mock_process.delay.called
-    assert mock_process.delay.call_args[0][3] == "final-job/cookies.txt"
+    assert mock_save_job.call_count == 1
+    assert mock_save_job.call_args.args[0] == str(response.id)
+    assert mock_process.delay.call_args[0][3] == "saved-cookie-ref"
 
 
-@patch("app.api.jobs.save_job_cookie", new_callable=AsyncMock)
-@patch("app.api.jobs.save_canonical_cookie", new_callable=AsyncMock)
-@patch("app.api.jobs.probe_cookie", new_callable=AsyncMock)
-@patch("app.api.jobs.process_dj_set")
 @patch("app.api.jobs.validate_url", new_callable=AsyncMock)
 @patch("app.api.jobs._check_rate_limit")
 @pytest.mark.asyncio
-async def test_invalid_cookie_fallback(
+async def test_cookie_guardrails_reject_non_netscape_format(
     mock_rate_limit: MagicMock,
     mock_validate: AsyncMock,
-    mock_process: MagicMock,
-    mock_probe: AsyncMock,
-    mock_save_canonical: AsyncMock,
-    mock_save_job: AsyncMock,
     async_session: AsyncSession,
-    invalid_cookie: bytes,
 ):
-    """Invalid/stale uploaded cookie falls back and still creates the job."""
+    """Cookie upload rejects files that are not Netscape cookie format."""
     mock_validate.return_value = None
-    mock_probe.return_value = False
-    mock_process.delay = MagicMock(return_value=None)
 
-    response = await create_job(
-        raw_request=MagicMock(),
-        url="https://youtube.com/watch?v=test789",
-        force=False,
-        confidence_threshold=0.5,
-        cookie_file=UploadFile(filename="cookies.txt", file=BytesIO(invalid_cookie)),
-        content_type="multipart/form-data; boundary=test",
-        session=async_session,
-    )
+    with pytest.raises(HTTPException) as exc_info:
+        await create_job(
+            raw_request=MagicMock(),
+            url="https://youtube.com/watch?v=test-guardrails",
+            force=False,
+            confidence_threshold=0.5,
+            cookie_file=UploadFile(filename="cookies.txt", file=BytesIO(b"not-a-cookie-file")),
+            content_type="multipart/form-data; boundary=test",
+            session=async_session,
+        )
 
-    assert response.status == "QUEUED"
-    assert not mock_save_job.called
-    assert not mock_save_canonical.called
-    assert mock_process.delay.call_args[0][3] is None
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Cookie file must be Netscape format"
 
 
 @patch("app.api.jobs.validate_url", new_callable=AsyncMock)
@@ -234,6 +201,93 @@ async def test_cookie_guardrails_reject_invalid_extension(
 
 
 @patch("app.workers.process_set._log_event")
+@patch("app.services.cookie_manager.get_canonical_cookie", new_callable=AsyncMock)
+@patch("app.services.cookie_manager.probe_cookie", new_callable=AsyncMock)
+@patch("app.services.cookie_manager.get_job_cookie", new_callable=AsyncMock)
+@patch("app.workers.process_set.download_audio", new_callable=AsyncMock)
+@patch("app.workers.process_set._get_sync_session")
+def test_worker_invalid_uploaded_cookie_falls_back_to_no_cookie(
+    mock_get_session: MagicMock,
+    mock_download: AsyncMock,
+    mock_get_job_cookie: AsyncMock,
+    mock_probe_cookie: AsyncMock,
+    mock_get_canonical_cookie: AsyncMock,
+    mock_log_event: MagicMock,
+    sync_session: Session,
+    valid_cookie: bytes,
+):
+    """Worker falls back when uploaded cookie probe fails."""
+    from app.workers import process_set as process_set_module
+    from app.workers.process_set import process_dj_set
+
+    process_set_module._canonical_cookie_probe_valid_until = None
+
+    job = Job(
+        id=uuid4(),
+        youtube_url="https://youtube.com/watch?v=worker_uploaded_invalid",
+        status=JobStatus.QUEUED,
+        progress=0,
+    )
+    sync_session.add(job)
+    sync_session.commit()
+    sync_session.refresh(job)
+
+    mock_get_session.return_value = sync_session
+    mock_get_job_cookie.return_value = valid_cookie
+    mock_probe_cookie.return_value = False
+    mock_get_canonical_cookie.return_value = None
+    mock_download.side_effect = Exception("stop after cookie resolution")
+
+    process_dj_set(str(job.id), job.youtube_url, cookie_blob_ref="job/cookies.txt")
+
+    assert mock_probe_cookie.called
+    assert mock_download.call_args.kwargs["cookie_path"] is None
+
+
+@patch("app.workers.process_set._log_event")
+@patch("app.services.cookie_manager.save_canonical_cookie", new_callable=AsyncMock)
+@patch("app.services.cookie_manager.probe_cookie", new_callable=AsyncMock)
+@patch("app.services.cookie_manager.get_job_cookie", new_callable=AsyncMock)
+@patch("app.workers.process_set.download_audio", new_callable=AsyncMock)
+@patch("app.workers.process_set._get_sync_session")
+def test_worker_promotes_valid_uploaded_cookie_to_canonical(
+    mock_get_session: MagicMock,
+    mock_download: AsyncMock,
+    mock_get_job_cookie: AsyncMock,
+    mock_probe_cookie: AsyncMock,
+    mock_save_canonical_cookie: AsyncMock,
+    mock_log_event: MagicMock,
+    sync_session: Session,
+    valid_cookie: bytes,
+):
+    """Worker promotes uploaded cookie to canonical after successful probe."""
+    from app.workers import process_set as process_set_module
+    from app.workers.process_set import process_dj_set
+
+    process_set_module._canonical_cookie_probe_valid_until = None
+
+    job = Job(
+        id=uuid4(),
+        youtube_url="https://youtube.com/watch?v=worker_uploaded_valid",
+        status=JobStatus.QUEUED,
+        progress=0,
+    )
+    sync_session.add(job)
+    sync_session.commit()
+    sync_session.refresh(job)
+
+    mock_get_session.return_value = sync_session
+    mock_get_job_cookie.return_value = valid_cookie
+    mock_probe_cookie.return_value = True
+    mock_download.side_effect = Exception("stop after cookie resolution")
+
+    process_dj_set(str(job.id), job.youtube_url, cookie_blob_ref="job/cookies.txt")
+
+    assert mock_save_canonical_cookie.called
+    assert mock_download.call_args.kwargs["cookie_path"] is not None
+
+
+@patch("app.workers.process_set._log_event")
 @patch("app.services.cookie_manager.probe_cookie", new_callable=AsyncMock)
 @patch("app.services.cookie_manager.get_canonical_cookie", new_callable=AsyncMock)
 @patch("app.services.cookie_manager.delete_canonical_cookie", new_callable=AsyncMock)
@@ -249,7 +303,10 @@ def test_worker_deletes_stale_canonical_cookie(
     sync_session: Session,
 ):
     """Worker deletes stale canonical cookie and continues fallback path."""
+    from app.workers import process_set as process_set_module
     from app.workers.process_set import process_dj_set
+
+    process_set_module._canonical_cookie_probe_valid_until = None
 
     job = Job(
         id=uuid4(),

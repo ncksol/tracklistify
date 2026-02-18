@@ -5,6 +5,8 @@ import logging
 import os
 import tempfile
 
+from azure.core.exceptions import ResourceExistsError
+
 from app.services.blob_storage import (
     _get_blob_service_client,
     _is_storage_configured,
@@ -33,7 +35,7 @@ async def save_canonical_cookie(cookie_content: bytes) -> None:
         container_client = blob_service_client.get_container_client(COOKIE_CONTAINER)
 
         # Create container if it doesn't exist
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(ResourceExistsError):
             await container_client.create_container()
 
         # Upload canonical cookie
@@ -102,7 +104,7 @@ async def save_job_cookie(job_id: str, cookie_content: bytes) -> str:
         container_client = blob_service_client.get_container_client(COOKIE_CONTAINER)
 
         # Create container if it doesn't exist
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(ResourceExistsError):
             await container_client.create_container()
 
         # Upload job-specific cookie
@@ -178,7 +180,8 @@ async def probe_cookie(
         os.write(tmp_fd, cookie_content)
         os.close(tmp_fd)
 
-        # Run yt-dlp with short timeout
+        # Run yt-dlp with short timeouts. This can take up to ~20s total:
+        # one timeout for process spawn and one timeout for process communicate.
         try:
             process = await asyncio.wait_for(
                 asyncio.create_subprocess_exec(
