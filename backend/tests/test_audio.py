@@ -35,6 +35,7 @@ class TestGetAudioDuration:
                 ],
                 capture_output=True,
                 text=True,
+                timeout=60,
             )
 
             # Verify correct duration returned
