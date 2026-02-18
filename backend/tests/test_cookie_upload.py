@@ -5,16 +5,19 @@ from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import httpx
 import pytest
 import pytest_asyncio
-from fastapi import HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, UploadFile
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
-from app.api.jobs import JobCreateRequest, create_job
+from app.api.jobs import create_job
+from app.api.jobs import router as jobs_router
+from app.db import get_session
 from app.models.base import Base
 from app.models.job import Job, JobStatus
 
@@ -53,6 +56,26 @@ def sync_session():
     Base.metadata.drop_all(engine)
 
 
+@pytest_asyncio.fixture
+async def client(async_session: AsyncSession):
+    """Create an httpx client for jobs router integration tests."""
+    app = FastAPI()
+    app.include_router(jobs_router)
+
+    async def override_get_session():
+        yield async_session
+
+    app.dependency_overrides[get_session] = override_get_session
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+    ) as test_client:
+        yield test_client
+
+    app.dependency_overrides.clear()
+
+
 @pytest.fixture
 def valid_cookie() -> bytes:
     return (
@@ -77,24 +100,24 @@ async def test_json_backward_compat(
     mock_rate_limit: MagicMock,
     mock_validate: AsyncMock,
     mock_process: MagicMock,
-    async_session: AsyncSession,
+    client: httpx.AsyncClient,
 ):
-    """JSON job creation remains backward compatible."""
+    """JSON job creation remains backward compatible over HTTP."""
     mock_validate.return_value = None
     mock_process.delay = MagicMock(return_value=None)
 
-    response = await create_job(
-        request=JobCreateRequest(
-            url="https://youtube.com/watch?v=test123",
-            force=False,
-            confidence_threshold=0.5,
-        ),
-        content_type="application/json",
-        session=async_session,
+    response = await client.post(
+        "/api/jobs",
+        json={
+            "url": "https://youtube.com/watch?v=test123",
+            "force": False,
+            "confidence_threshold": 0.5,
+        },
     )
 
-    assert response.youtube_url == "https://youtube.com/watch?v=test123"
-    assert response.status == "QUEUED"
+    assert response.status_code == 201
+    assert response.json()["youtube_url"] == "https://youtube.com/watch?v=test123"
+    assert response.json()["status"] == "QUEUED"
     assert mock_process.delay.called
     assert mock_process.delay.call_args[0][3] is None
 
@@ -128,6 +151,7 @@ async def test_valid_cookie_promotion(
     mock_process.delay = MagicMock(return_value=None)
 
     response = await create_job(
+        raw_request=MagicMock(),
         url="https://youtube.com/watch?v=test456",
         force=False,
         confidence_threshold=0.6,
@@ -168,6 +192,7 @@ async def test_invalid_cookie_fallback(
     mock_process.delay = MagicMock(return_value=None)
 
     response = await create_job(
+        raw_request=MagicMock(),
         url="https://youtube.com/watch?v=test789",
         force=False,
         confidence_threshold=0.5,
@@ -196,6 +221,7 @@ async def test_cookie_guardrails_reject_invalid_extension(
 
     with pytest.raises(HTTPException) as exc_info:
         await create_job(
+            raw_request=MagicMock(),
             url="https://youtube.com/watch?v=test-guardrails",
             force=False,
             confidence_threshold=0.5,

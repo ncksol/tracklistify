@@ -34,6 +34,7 @@ export default function SubmitForm({ onJobCreated }: SubmitFormProps) {
     if (file) {
       // Validate file type
       if (!file.name.endsWith('.txt')) {
+        setCookieFile(null);
         setError('Please select a .txt file');
         e.target.value = ''; // Clear the input
         return;
