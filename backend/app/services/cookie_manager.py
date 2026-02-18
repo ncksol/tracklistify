@@ -183,8 +183,10 @@ async def probe_cookie(
             process = await asyncio.wait_for(
                 asyncio.create_subprocess_exec(
                     "yt-dlp",
-                    "--cookies", tmp_path,
-                    "--print", "%(title)s",
+                    "--cookies",
+                    tmp_path,
+                    "--print",
+                    "%(title)s",
                     "--no-download",
                     test_url,
                     stdout=asyncio.subprocess.PIPE,
