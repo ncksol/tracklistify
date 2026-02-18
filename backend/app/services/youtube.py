@@ -29,7 +29,7 @@ def _get_cookies_args(cookie_path: str | None = None) -> list[str]:
     Returns:
         List of yt-dlp arguments for cookies, or empty list if no cookie available
     """
-    cookies_file = cookie_path or os.getenv("YTDLP_COOKIES_FILE", "/app/cookies/cookies.txt")
+    cookies_file = cookie_path or os.getenv("YTDLP_COOKIES_FILE") or "/app/cookies/cookies.txt"
 
     if os.path.isfile(cookies_file):
         tmp_fd, tmp_path = tempfile.mkstemp(suffix=".txt")

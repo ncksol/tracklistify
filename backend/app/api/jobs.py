@@ -460,11 +460,11 @@ async def create_job(
         # Delete temp and re-upload with correct job ID
         from app.services.cookie_manager import delete_job_cookie, get_job_cookie
 
-        cookie_content = await get_job_cookie(job_cookie_blob_ref)
+        cookie_blob_content = await get_job_cookie(job_cookie_blob_ref)
         await delete_job_cookie(job_cookie_blob_ref)
 
-        if cookie_content:
-            job_cookie_blob_ref = await save_job_cookie(str(new_job.id), cookie_content)
+        if cookie_blob_content:
+            job_cookie_blob_ref = await save_job_cookie(str(new_job.id), cookie_blob_content)
         else:
             job_cookie_blob_ref = None
 
