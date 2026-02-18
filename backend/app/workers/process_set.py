@@ -5,7 +5,7 @@ import contextlib
 import logging
 import os
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 _sync_engine: Any = None
 _SyncSessionMaker: Any = None
+_CANONICAL_COOKIE_PROBE_TTL_SECONDS = int(os.getenv("CANONICAL_COOKIE_PROBE_TTL_SECONDS", "3600"))
+_canonical_cookie_probe_valid_until: datetime | None = None
 
 
 def _get_sync_session() -> Session:
@@ -204,20 +206,43 @@ def process_dj_set(
     cookie_temp_path: str | None = None
 
     try:
+        global _canonical_cookie_probe_valid_until  # noqa: PLW0603
+
         # Step 0: Resolve cookie source at execution time
         cookie_source = "none"
         if cookie_blob_ref:
             # Try to retrieve job-specific cookie from blob storage
-            from app.services.cookie_manager import get_job_cookie
+            from app.services.cookie_manager import (
+                get_job_cookie,
+                probe_cookie,
+                save_canonical_cookie,
+            )
 
             cookie_content = asyncio.run(get_job_cookie(cookie_blob_ref))
             if cookie_content:
-                # Write to temp file for yt-dlp
-                tmp_fd, cookie_temp_path = tempfile.mkstemp(suffix=".txt")
-                os.write(tmp_fd, cookie_content)
-                os.close(tmp_fd)
-                cookie_source = "uploaded"
-                logger.info("[%s] Using uploaded cookie", job_id)
+                # Validate uploaded cookie in worker to avoid request-path latency.
+                is_uploaded_cookie_valid = asyncio.run(probe_cookie(cookie_content))
+                if is_uploaded_cookie_valid:
+                    # Write to temp file for yt-dlp
+                    tmp_fd, cookie_temp_path = tempfile.mkstemp(suffix=".txt")
+                    os.write(tmp_fd, cookie_content)
+                    os.close(tmp_fd)
+                    cookie_source = "uploaded"
+                    logger.info("[%s] Using uploaded cookie", job_id)
+
+                    # Uploaded cookie is now verified by probe; promote for reuse.
+                    try:
+                        asyncio.run(save_canonical_cookie(cookie_content))
+                        _canonical_cookie_probe_valid_until = datetime.utcnow() + timedelta(
+                            seconds=_CANONICAL_COOKIE_PROBE_TTL_SECONDS
+                        )
+                    except Exception:
+                        logger.warning(
+                            "[%s] Failed to promote uploaded cookie to canonical",
+                            job_id,
+                        )
+                else:
+                    logger.warning("[%s] Uploaded cookie is stale/invalid, falling back", job_id)
             else:
                 logger.warning("[%s] Uploaded cookie not found, trying canonical", job_id)
 
@@ -231,8 +256,22 @@ def process_dj_set(
 
             canonical_cookie = asyncio.run(get_canonical_cookie())
             if canonical_cookie:
-                # Validate canonical cookie before use
-                is_valid = asyncio.run(probe_cookie(canonical_cookie))
+                # Avoid probing canonical cookie on every job; cache successful probe for a TTL.
+                now = datetime.utcnow()
+                should_probe = (
+                    _canonical_cookie_probe_valid_until is None
+                    or now >= _canonical_cookie_probe_valid_until
+                )
+                is_valid = True
+                if should_probe:
+                    is_valid = asyncio.run(probe_cookie(canonical_cookie))
+                    if is_valid:
+                        _canonical_cookie_probe_valid_until = now + timedelta(
+                            seconds=_CANONICAL_COOKIE_PROBE_TTL_SECONDS
+                        )
+                    else:
+                        _canonical_cookie_probe_valid_until = None
+
                 if is_valid:
                     tmp_fd, cookie_temp_path = tempfile.mkstemp(suffix=".txt")
                     os.write(tmp_fd, canonical_cookie)

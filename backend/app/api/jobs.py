@@ -16,11 +16,7 @@ from app.models.job import Job, JobStatus
 from app.models.job_event import JobEvent
 from app.models.track import Track
 from app.models.unidentified import UnidentifiedSegment
-from app.services.cookie_manager import (
-    probe_cookie,
-    save_canonical_cookie,
-    save_job_cookie,
-)
+from app.services.cookie_manager import save_job_cookie
 from app.services.youtube import validate_url
 from app.workers.process_set import process_dj_set
 
@@ -77,6 +73,12 @@ _MAX_COOKIE_SIZE_BYTES = 1024 * 1024  # 1 MB
 _ALLOWED_COOKIE_EXTENSIONS = {".txt"}
 
 
+def _looks_like_netscape_cookie(content: bytes) -> bool:
+    """Check whether uploaded content appears to be Netscape cookie format."""
+    first_line = content.splitlines()[0].strip() if content else b""
+    return first_line.startswith(b"# Netscape HTTP Cookie File")
+
+
 async def _validate_cookie_file(cookie_file: UploadFile) -> bytes:
     """Validate and read uploaded cookie file.
 
@@ -110,6 +112,12 @@ async def _validate_cookie_file(cookie_file: UploadFile) -> bytes:
 
     if len(cookie_content) == 0:
         raise HTTPException(status_code=400, detail="Cookie file is empty")
+
+    if not _looks_like_netscape_cookie(cookie_content):
+        raise HTTPException(
+            status_code=400,
+            detail="Cookie file must be Netscape format",
+        )
 
     return cookie_content
 
@@ -364,6 +372,8 @@ async def create_job(
     # Determine request type using Content-Type (boundary-safe for multipart)
     normalized_content_type = (content_type or "").lower()
     is_multipart = normalized_content_type.startswith("multipart/form-data")
+    job_cookie_blob_ref: str | None = None
+    cookie_content_to_save: bytes | None = None
 
     if is_multipart:
         # Multipart request
@@ -374,33 +384,8 @@ async def create_job(
         job_confidence_threshold = confidence_threshold
 
         # Handle optional cookie file upload
-        job_cookie_blob_ref = None
         if cookie_file and cookie_file.filename:
-            cookie_content = await _validate_cookie_file(cookie_file)
-
-            # Probe cookie validity
-            is_valid = await probe_cookie(cookie_content)
-            if not is_valid:
-                logger.warning("Uploaded cookie validation failed, falling back to saved/no cookie")
-                job_cookie_blob_ref = None
-            else:
-                # Valid cookie - save it for this job and promote to canonical
-                import uuid
-
-                temp_job_id = str(uuid.uuid4())
-                try:
-                    job_cookie_blob_ref = await save_job_cookie(temp_job_id, cookie_content)
-                except ValueError:
-                    logger.warning("Cookie storage unavailable, falling back to saved/no cookie")
-                    job_cookie_blob_ref = None
-
-                # Promote valid uploaded cookie to canonical for future runs
-                try:
-                    await save_canonical_cookie(cookie_content)
-                    logger.info("Valid uploaded cookie promoted to canonical")
-                except Exception:
-                    logger.warning("Failed to promote cookie to canonical")
-                    # Don't fail the request if promotion fails
+            cookie_content_to_save = await _validate_cookie_file(cookie_file)
     else:
         # JSON request
         if request is None:
@@ -413,7 +398,7 @@ async def create_job(
         job_url = request.url
         job_force = request.force
         job_confidence_threshold = request.confidence_threshold
-        job_cookie_blob_ref = None
+        cookie_content_to_save = None
 
     # Validate YouTube URL
     try:
@@ -431,12 +416,6 @@ async def create_job(
         existing_job = result.scalar_one_or_none()
 
         if existing_job:
-            # Clean up uploaded cookie if not needed
-            if job_cookie_blob_ref:
-                from app.services.cookie_manager import delete_job_cookie
-
-                await delete_job_cookie(job_cookie_blob_ref)
-
             return JobResponse(
                 id=existing_job.id,
                 youtube_url=existing_job.youtube_url,
@@ -461,17 +440,12 @@ async def create_job(
     await session.commit()
     await session.refresh(new_job)
 
-    # If we have a cookie blob ref with temp ID, rename it to actual job ID
-    if job_cookie_blob_ref:
-        # Delete temp and re-upload with correct job ID
-        from app.services.cookie_manager import delete_job_cookie, get_job_cookie
-
-        cookie_blob_content = await get_job_cookie(job_cookie_blob_ref)
-        await delete_job_cookie(job_cookie_blob_ref)
-
-        if cookie_blob_content:
-            job_cookie_blob_ref = await save_job_cookie(str(new_job.id), cookie_blob_content)
-        else:
+    # Save uploaded cookie under final job ID (single write, no temp-blob rename window)
+    if cookie_content_to_save:
+        try:
+            job_cookie_blob_ref = await save_job_cookie(str(new_job.id), cookie_content_to_save)
+        except ValueError:
+            logger.warning("Cookie storage unavailable, falling back to saved/no cookie")
             job_cookie_blob_ref = None
 
     # Enqueue Celery task for processing
