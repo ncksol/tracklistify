@@ -179,7 +179,7 @@ class TestPipelineIntegration:
     @patch("app.workers.process_set.delete_audio", new_callable=AsyncMock)
     @patch("app.workers.process_set.notify_progress", new_callable=AsyncMock)
     @patch("app.workers.process_set.identify_segment", new_callable=AsyncMock)
-    @patch("app.workers.process_set.segment_audio", new_callable=AsyncMock)
+    @patch("app.workers.process_set.segment_audio")
     @patch("app.workers.process_set.validate_url", new_callable=AsyncMock)
     @patch("app.workers.process_set.upload_audio", new_callable=AsyncMock)
     @patch("app.workers.process_set.download_audio", new_callable=AsyncMock)
@@ -190,7 +190,7 @@ class TestPipelineIntegration:
         mock_download: AsyncMock,
         mock_upload: AsyncMock,
         mock_validate: AsyncMock,
-        mock_segment: AsyncMock,
+        mock_segment: MagicMock,
         mock_identify: AsyncMock,
         mock_notify: AsyncMock,
         mock_delete: AsyncMock,
@@ -438,7 +438,7 @@ class TestPipelineWithLargerGap:
     @patch("app.workers.process_set.delete_audio", new_callable=AsyncMock)
     @patch("app.workers.process_set.notify_progress", new_callable=AsyncMock)
     @patch("app.workers.process_set.identify_segment", new_callable=AsyncMock)
-    @patch("app.workers.process_set.segment_audio", new_callable=AsyncMock)
+    @patch("app.workers.process_set.segment_audio")
     @patch("app.workers.process_set.validate_url", new_callable=AsyncMock)
     @patch("app.workers.process_set.upload_audio", new_callable=AsyncMock)
     @patch("app.workers.process_set.download_audio", new_callable=AsyncMock)
@@ -449,7 +449,7 @@ class TestPipelineWithLargerGap:
         mock_download: AsyncMock,
         mock_upload: AsyncMock,
         mock_validate: AsyncMock,
-        mock_segment: AsyncMock,
+        mock_segment: MagicMock,
         mock_identify: AsyncMock,
         mock_notify: AsyncMock,
         mock_delete: AsyncMock,

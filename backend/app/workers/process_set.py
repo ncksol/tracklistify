@@ -283,13 +283,11 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
         )
 
         segments_dir = temp_dir / "segments"
-        segments = asyncio.run(
-            segment_audio(
-                input_path=str(audio_path),
-                output_dir=str(segments_dir),
-                window_seconds=12,
-                hop_seconds=6,
-            )
+        segments = segment_audio(
+            input_path=str(audio_path),
+            output_dir=str(segments_dir),
+            window_seconds=12,
+            hop_seconds=6,
         )
         _update_job_status(session, job_id, JobStatus.SEGMENTING, 35)
         _log_event(
