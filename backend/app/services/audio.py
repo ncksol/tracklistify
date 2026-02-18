@@ -31,6 +31,7 @@ def get_audio_duration(file_path: str) -> float:
         ],
         capture_output=True,
         text=True,
+        timeout=60,
     )
 
     if result.returncode != 0:
@@ -100,13 +101,14 @@ def segment_audio(
         segment_path = output_path / segment_filename
 
         # Run FFmpeg to extract segment
+        # -ss before -i enables fast input seeking (byte-accurate for WAV)
         result = subprocess.run(
             [
                 "ffmpeg",
-                "-i",
-                input_path,
                 "-ss",
                 str(start_seconds),
+                "-i",
+                input_path,
                 "-t",
                 str(duration_seconds),
                 "-acodec",
@@ -120,6 +122,7 @@ def segment_audio(
             ],
             capture_output=True,
             text=True,
+            timeout=30,
         )
 
         if result.returncode != 0:
