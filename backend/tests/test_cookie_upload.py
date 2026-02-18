@@ -202,6 +202,7 @@ async def test_cookie_guardrails_reject_invalid_extension(
 
 @patch("app.workers.process_set._log_event")
 @patch("app.services.cookie_manager.save_canonical_cookie", new_callable=AsyncMock)
+@patch("app.services.cookie_manager.probe_cookie", new_callable=AsyncMock)
 @patch("app.services.cookie_manager.get_job_cookie", new_callable=AsyncMock)
 @patch("app.workers.process_set.download_audio", new_callable=AsyncMock)
 @patch("app.workers.process_set._get_sync_session")
@@ -209,6 +210,7 @@ def test_worker_uses_uploaded_cookie_without_probing(
     mock_get_session: MagicMock,
     mock_download: AsyncMock,
     mock_get_job_cookie: AsyncMock,
+    mock_probe_cookie: AsyncMock,
     mock_save_canonical_cookie: AsyncMock,
     mock_log_event: MagicMock,
     sync_session: Session,
@@ -238,6 +240,7 @@ def test_worker_uses_uploaded_cookie_without_probing(
 
     # Cookie is used directly (no probe_cookie call)
     assert mock_download.call_args.kwargs["cookie_path"] is not None
+    assert not mock_probe_cookie.called
     # Cookie is promoted to canonical
     assert mock_save_canonical_cookie.called
 
