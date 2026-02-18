@@ -1,11 +1,11 @@
 """FFmpeg audio segmentation service for sliding window fingerprinting."""
 
-import asyncio
+import subprocess
 from pathlib import Path
 from typing import Any
 
 
-async def get_audio_duration(file_path: str) -> float:
+def get_audio_duration(file_path: str) -> float:
     """
     Get the duration of an audio file in seconds using ffprobe.
 
@@ -18,35 +18,33 @@ async def get_audio_duration(file_path: str) -> float:
     Raises:
         RuntimeError: If ffprobe fails or returns invalid output
     """
-    process = await asyncio.create_subprocess_exec(
-        "ffprobe",
-        "-v",
-        "error",
-        "-show_entries",
-        "format=duration",
-        "-of",
-        "default=noprint_wrappers=1:nokey=1",
-        file_path,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            file_path,
+        ],
+        capture_output=True,
+        text=True,
     )
 
-    stdout, stderr = await process.communicate()
-
-    if process.returncode != 0:
-        raise RuntimeError(
-            f"ffprobe failed with return code {process.returncode}: {stderr.decode()}"
-        )
+    if result.returncode != 0:
+        raise RuntimeError(f"ffprobe failed with return code {result.returncode}: {result.stderr}")
 
     try:
-        duration = float(stdout.decode().strip())
+        duration = float(result.stdout.strip())
     except ValueError as e:
-        raise RuntimeError(f"Invalid duration output from ffprobe: {stdout.decode()}") from e
+        raise RuntimeError(f"Invalid duration output from ffprobe: {result.stdout}") from e
 
     return duration
 
 
-async def segment_audio(
+def segment_audio(
     input_path: str,
     output_dir: str,
     window_seconds: int = 12,
@@ -80,7 +78,7 @@ async def segment_audio(
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Get total duration
-    total_duration = await get_audio_duration(input_path)
+    total_duration = get_audio_duration(input_path)
 
     # Calculate segment boundaries
     segments: list[dict[str, Any]] = []
@@ -102,32 +100,32 @@ async def segment_audio(
         segment_path = output_path / segment_filename
 
         # Run FFmpeg to extract segment
-        process = await asyncio.create_subprocess_exec(
-            "ffmpeg",
-            "-i",
-            input_path,
-            "-ss",
-            str(start_seconds),
-            "-t",
-            str(duration_seconds),
-            "-acodec",
-            "pcm_s16le",
-            "-ar",
-            "16000",
-            "-ac",
-            "1",
-            "-y",  # Overwrite output files without asking
-            str(segment_path),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-i",
+                input_path,
+                "-ss",
+                str(start_seconds),
+                "-t",
+                str(duration_seconds),
+                "-acodec",
+                "pcm_s16le",
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-y",
+                str(segment_path),
+            ],
+            capture_output=True,
+            text=True,
         )
 
-        stdout, stderr = await process.communicate()
-
-        if process.returncode != 0:
+        if result.returncode != 0:
             raise RuntimeError(
                 f"ffmpeg failed for segment {segment_index} "
-                f"(return code {process.returncode}): {stderr.decode()}"
+                f"(return code {result.returncode}): {result.stderr}"
             )
 
         # Add segment metadata
