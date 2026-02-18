@@ -35,7 +35,7 @@ def get_audio_duration(file_path: str) -> float:
             timeout=60,
         )
     except subprocess.TimeoutExpired:
-        raise RuntimeError(f"ffprobe timed out after 60s for {file_path}")
+        raise RuntimeError(f"ffprobe timed out after 60s for {file_path}") from None
 
     if result.returncode != 0:
         raise RuntimeError(f"ffprobe failed with return code {result.returncode}: {result.stderr}")
@@ -130,9 +130,8 @@ def segment_audio(
             )
         except subprocess.TimeoutExpired:
             raise RuntimeError(
-                f"ffmpeg timed out after 30s for segment {segment_index} "
-                f"(start={start_seconds}s)"
-            )
+                f"ffmpeg timed out after 30s for segment {segment_index} (start={start_seconds}s)"
+            ) from None
 
         if result.returncode != 0:
             raise RuntimeError(
