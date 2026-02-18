@@ -212,39 +212,33 @@ def process_dj_set(
         cookie_source = "none"
         if cookie_blob_ref:
             # Try to retrieve job-specific cookie from blob storage
-            from app.services.cookie_manager import (
-                get_job_cookie,
-                probe_cookie,
-                save_canonical_cookie,
-            )
+            from app.services.cookie_manager import get_job_cookie, save_canonical_cookie
 
             cookie_content = asyncio.run(get_job_cookie(cookie_blob_ref))
             if cookie_content:
-                # Validate uploaded cookie in worker to avoid request-path latency.
-                is_uploaded_cookie_valid = asyncio.run(probe_cookie(cookie_content))
-                if is_uploaded_cookie_valid:
-                    # Write to temp file for yt-dlp
-                    tmp_fd, cookie_temp_path = tempfile.mkstemp(suffix=".txt")
-                    os.write(tmp_fd, cookie_content)
-                    os.close(tmp_fd)
-                    cookie_source = "uploaded"
-                    logger.info("[%s] Using uploaded cookie", job_id)
+                # Trust user-uploaded cookie directly; yt-dlp fallback handles stale cookies
+                tmp_fd, cookie_temp_path = tempfile.mkstemp(suffix=".txt")
+                os.write(tmp_fd, cookie_content)
+                os.close(tmp_fd)
+                cookie_source = "uploaded"
+                logger.info("[%s] Using uploaded cookie", job_id)
 
-                    # Uploaded cookie is now verified by probe; promote for reuse.
-                    try:
-                        asyncio.run(save_canonical_cookie(cookie_content))
-                        _canonical_cookie_probe_valid_until = datetime.utcnow() + timedelta(
-                            seconds=_CANONICAL_COOKIE_PROBE_TTL_SECONDS
-                        )
-                    except Exception:
-                        logger.warning(
-                            "[%s] Failed to promote uploaded cookie to canonical",
-                            job_id,
-                        )
-                else:
-                    logger.warning("[%s] Uploaded cookie is stale/invalid, falling back", job_id)
+                # Promote fresh upload to canonical for reuse by future jobs
+                try:
+                    asyncio.run(save_canonical_cookie(cookie_content))
+                    _canonical_cookie_probe_valid_until = datetime.utcnow() + timedelta(
+                        seconds=_CANONICAL_COOKIE_PROBE_TTL_SECONDS
+                    )
+                except Exception:
+                    logger.warning(
+                        "[%s] Failed to promote uploaded cookie to canonical",
+                        job_id,
+                    )
             else:
-                logger.warning("[%s] Uploaded cookie not found, trying canonical", job_id)
+                logger.warning(
+                    "[%s] Uploaded cookie not found in storage, trying canonical",
+                    job_id,
+                )
 
         if cookie_source == "none":
             # Try canonical cookie

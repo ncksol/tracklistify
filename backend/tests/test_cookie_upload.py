@@ -201,66 +201,20 @@ async def test_cookie_guardrails_reject_invalid_extension(
 
 
 @patch("app.workers.process_set._log_event")
-@patch("app.services.cookie_manager.get_canonical_cookie", new_callable=AsyncMock)
-@patch("app.services.cookie_manager.probe_cookie", new_callable=AsyncMock)
-@patch("app.services.cookie_manager.get_job_cookie", new_callable=AsyncMock)
-@patch("app.workers.process_set.download_audio", new_callable=AsyncMock)
-@patch("app.workers.process_set._get_sync_session")
-def test_worker_invalid_uploaded_cookie_falls_back_to_no_cookie(
-    mock_get_session: MagicMock,
-    mock_download: AsyncMock,
-    mock_get_job_cookie: AsyncMock,
-    mock_probe_cookie: AsyncMock,
-    mock_get_canonical_cookie: AsyncMock,
-    mock_log_event: MagicMock,
-    sync_session: Session,
-    valid_cookie: bytes,
-):
-    """Worker falls back when uploaded cookie probe fails."""
-    from app.workers import process_set as process_set_module
-    from app.workers.process_set import process_dj_set
-
-    process_set_module._canonical_cookie_probe_valid_until = None
-
-    job = Job(
-        id=uuid4(),
-        youtube_url="https://youtube.com/watch?v=worker_uploaded_invalid",
-        status=JobStatus.QUEUED,
-        progress=0,
-    )
-    sync_session.add(job)
-    sync_session.commit()
-    sync_session.refresh(job)
-
-    mock_get_session.return_value = sync_session
-    mock_get_job_cookie.return_value = valid_cookie
-    mock_probe_cookie.return_value = False
-    mock_get_canonical_cookie.return_value = None
-    mock_download.side_effect = Exception("stop after cookie resolution")
-
-    process_dj_set(str(job.id), job.youtube_url, cookie_blob_ref="job/cookies.txt")
-
-    assert mock_probe_cookie.called
-    assert mock_download.call_args.kwargs["cookie_path"] is None
-
-
-@patch("app.workers.process_set._log_event")
 @patch("app.services.cookie_manager.save_canonical_cookie", new_callable=AsyncMock)
-@patch("app.services.cookie_manager.probe_cookie", new_callable=AsyncMock)
 @patch("app.services.cookie_manager.get_job_cookie", new_callable=AsyncMock)
 @patch("app.workers.process_set.download_audio", new_callable=AsyncMock)
 @patch("app.workers.process_set._get_sync_session")
-def test_worker_promotes_valid_uploaded_cookie_to_canonical(
+def test_worker_uses_uploaded_cookie_without_probing(
     mock_get_session: MagicMock,
     mock_download: AsyncMock,
     mock_get_job_cookie: AsyncMock,
-    mock_probe_cookie: AsyncMock,
     mock_save_canonical_cookie: AsyncMock,
     mock_log_event: MagicMock,
     sync_session: Session,
     valid_cookie: bytes,
 ):
-    """Worker promotes uploaded cookie to canonical after successful probe."""
+    """Worker uses uploaded cookie directly without probe and promotes to canonical."""
     from app.workers import process_set as process_set_module
     from app.workers.process_set import process_dj_set
 
@@ -268,7 +222,7 @@ def test_worker_promotes_valid_uploaded_cookie_to_canonical(
 
     job = Job(
         id=uuid4(),
-        youtube_url="https://youtube.com/watch?v=worker_uploaded_valid",
+        youtube_url="https://youtube.com/watch?v=worker_uploaded",
         status=JobStatus.QUEUED,
         progress=0,
     )
@@ -278,13 +232,14 @@ def test_worker_promotes_valid_uploaded_cookie_to_canonical(
 
     mock_get_session.return_value = sync_session
     mock_get_job_cookie.return_value = valid_cookie
-    mock_probe_cookie.return_value = True
     mock_download.side_effect = Exception("stop after cookie resolution")
 
     process_dj_set(str(job.id), job.youtube_url, cookie_blob_ref="job/cookies.txt")
 
-    assert mock_save_canonical_cookie.called
+    # Cookie is used directly (no probe_cookie call)
     assert mock_download.call_args.kwargs["cookie_path"] is not None
+    # Cookie is promoted to canonical
+    assert mock_save_canonical_cookie.called
 
 
 @patch("app.workers.process_set._log_event")

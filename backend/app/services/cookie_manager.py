@@ -183,9 +183,11 @@ async def probe_cookie(
         # Run yt-dlp with short timeouts. This can take up to ~20s total:
         # one timeout for process spawn and one timeout for process communicate.
         try:
+            from app.services.youtube import _YTDLP_BASE
+
             process = await asyncio.wait_for(
                 asyncio.create_subprocess_exec(
-                    "yt-dlp",
+                    *_YTDLP_BASE,
                     "--cookies",
                     tmp_path,
                     "--print",
@@ -195,9 +197,9 @@ async def probe_cookie(
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 ),
-                timeout=10.0,
+                timeout=15.0,
             )
-            await asyncio.wait_for(process.communicate(), timeout=10.0)
+            await asyncio.wait_for(process.communicate(), timeout=15.0)
 
             if process.returncode == 0:
                 logger.info("Cookie validation succeeded")
