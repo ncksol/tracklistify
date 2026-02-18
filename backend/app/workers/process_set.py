@@ -171,12 +171,19 @@ async def _batch_fingerprint_segments(
 
 
 @celery_app.task  # type: ignore[untyped-decorator]
-def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 0.50) -> None:
+def process_dj_set(
+    job_id: str,
+    youtube_url: str,
+    confidence_threshold: float = 0.50,
+    cookie_blob_ref: str | None = None,
+) -> None:
     """Process a DJ set through the complete fingerprinting pipeline.
 
     Args:
         job_id: Unique job identifier
         youtube_url: YouTube URL of the DJ set
+        confidence_threshold: Minimum confidence score for track identification
+        cookie_blob_ref: Optional blob reference for job-specific cookie file
 
     Pipeline steps:
         1. Download audio from YouTube
@@ -194,8 +201,59 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
     session = _get_sync_session()
     temp_dir: Path | None = None
     blob_name: str | None = None
+    cookie_temp_path: str | None = None
 
     try:
+        # Step 0: Resolve cookie source at execution time
+        cookie_source = "none"
+        if cookie_blob_ref:
+            # Try to retrieve job-specific cookie from blob storage
+            from app.services.cookie_manager import get_job_cookie
+
+            cookie_content = asyncio.run(get_job_cookie(cookie_blob_ref))
+            if cookie_content:
+                # Write to temp file for yt-dlp
+                tmp_fd, cookie_temp_path = tempfile.mkstemp(suffix=".txt")
+                os.write(tmp_fd, cookie_content)
+                os.close(tmp_fd)
+                cookie_source = "uploaded"
+                logger.info("[%s] Using uploaded cookie", job_id)
+            else:
+                logger.warning("[%s] Uploaded cookie not found, trying canonical", job_id)
+
+        if cookie_source == "none":
+            # Try canonical cookie
+            from app.services.cookie_manager import (
+                delete_canonical_cookie,
+                get_canonical_cookie,
+                probe_cookie,
+            )
+
+            canonical_cookie = asyncio.run(get_canonical_cookie())
+            if canonical_cookie:
+                # Validate canonical cookie before use
+                is_valid = asyncio.run(probe_cookie(canonical_cookie))
+                if is_valid:
+                    tmp_fd, cookie_temp_path = tempfile.mkstemp(suffix=".txt")
+                    os.write(tmp_fd, canonical_cookie)
+                    os.close(tmp_fd)
+                    cookie_source = "canonical"
+                    logger.info("[%s] Using canonical cookie", job_id)
+                else:
+                    logger.warning(
+                        "[%s] Canonical cookie is stale/invalid, deleting and falling back",
+                        job_id,
+                    )
+                    asyncio.run(delete_canonical_cookie())
+                    logger.info(
+                        "[%s] No valid cookie available, proceeding without authentication",
+                        job_id,
+                    )
+            else:
+                logger.info("[%s] No cookie available, proceeding without authentication", job_id)
+
+        _log_event(session, job_id, f"Cookie source: {cookie_source}", "DOWNLOADING", 2)
+
         # Step 1: Update status to DOWNLOADING
         _update_job_status(session, job_id, JobStatus.DOWNLOADING, 5)
         _log_event(session, job_id, "Starting audio download...", "DOWNLOADING", 5)
@@ -205,7 +263,7 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
         temp_dir = Path(tempfile.mkdtemp(prefix="tracklistify_"))
         audio_path = temp_dir / "audio.wav"
 
-        asyncio.run(download_audio(youtube_url, str(audio_path)))
+        asyncio.run(download_audio(youtube_url, str(audio_path), cookie_path=cookie_temp_path))
 
         # Get file size for logging
         file_size_mb = audio_path.stat().st_size / (1024 * 1024) if audio_path.exists() else 0
@@ -227,7 +285,7 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
 
         # Step 4: Get YouTube metadata
         _update_job_status(session, job_id, JobStatus.DOWNLOADING, 20)
-        metadata = asyncio.run(validate_url(youtube_url))
+        metadata = asyncio.run(validate_url(youtube_url, cookie_path=cookie_temp_path))
         video_title = metadata["title"]
         duration_str = metadata["duration"]
         description = metadata["description"]
@@ -425,5 +483,17 @@ def process_dj_set(job_id: str, youtube_url: str, confidence_threshold: float = 
             import shutil
 
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+        # Clean up cookie temp file
+        if cookie_temp_path:
+            with contextlib.suppress(OSError):
+                os.unlink(cookie_temp_path)
+
+        # Clean up job-specific cookie from blob storage if it was uploaded
+        if cookie_blob_ref:
+            from app.services.cookie_manager import delete_job_cookie
+
+            with contextlib.suppress(Exception):
+                asyncio.run(delete_job_cookie(cookie_blob_ref))
 
         session.close()

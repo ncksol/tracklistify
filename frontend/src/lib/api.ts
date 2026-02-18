@@ -121,13 +121,32 @@ export async function createJob(
   url: string,
   force = false,
   confidence_threshold = 0.5,
+  cookieFile?: File,
 ): Promise<Job> {
+  // If no cookie file, use JSON submission
+  if (!cookieFile) {
+    const response = await fetch(buildUrl('/api/jobs'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url, force, confidence_threshold }),
+    });
+
+    return handleResponse<Job>(response);
+  }
+
+  // If cookie file is present, use multipart/form-data
+  const formData = new FormData();
+  formData.append('url', url);
+  formData.append('force', String(force));
+  formData.append('confidence_threshold', String(confidence_threshold));
+  formData.append('cookie_file', cookieFile);
+
   const response = await fetch(buildUrl('/api/jobs'), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ url, force, confidence_threshold }),
+    // Don't set Content-Type header - browser will set it with boundary for multipart
+    body: formData,
   });
 
   return handleResponse<Job>(response);
