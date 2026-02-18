@@ -5,8 +5,8 @@ import random
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -322,6 +322,7 @@ async def list_jobs(
 
 @router.post("", response_model=JobResponse, status_code=201)
 async def create_job(
+    raw_request: Request,
     request: JobCreateRequest | None = None,
     url: str | None = Form(None),
     force: bool = Form(False),
@@ -403,7 +404,12 @@ async def create_job(
     else:
         # JSON request
         if request is None:
-            raise HTTPException(status_code=400, detail="JSON request body is required")
+            try:
+                request = JobCreateRequest.model_validate(await raw_request.json())
+            except ValidationError as e:
+                raise HTTPException(status_code=422, detail=e.errors()) from e
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail="JSON request body is required") from e
         job_url = request.url
         job_force = request.force
         job_confidence_threshold = request.confidence_threshold
