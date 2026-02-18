@@ -408,8 +408,8 @@ async def create_job(
     try:
         if cookie_content_to_save:
             tmp_fd, cookie_temp_path = tempfile.mkstemp(suffix=".txt")
-            os.write(tmp_fd, cookie_content_to_save)
-            os.close(tmp_fd)
+            with os.fdopen(tmp_fd, "wb") as tmp_file:
+                tmp_file.write(cookie_content_to_save)
         await validate_url(job_url, cookie_path=cookie_temp_path)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
