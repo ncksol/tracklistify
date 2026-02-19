@@ -124,6 +124,30 @@ npm run dev
 | `DELETE` | `/api/jobs/{id}/tracks/{tid}` | Remove a false positive |
 | `DELETE` | `/api/jobs/{id}/unidentified/{sid}` | Remove an unidentified section |
 
+## 💻 CLI
+
+You can run the same identification flow from the command line:
+
+```bash
+cd backend
+pip install -r requirements.txt
+
+# Submit and wait for results
+python -m app.cli identify "https://youtu.be/<video-id>"
+
+# Include cookie upload, custom threshold, and force reanalysis
+python -m app.cli identify "https://youtu.be/<video-id>" \
+  --cookie-file /path/to/cookies.txt \
+  --confidence-threshold 0.2 \
+  --force
+```
+
+If you install the backend package, the same command is available as:
+
+```bash
+tracklistify-cli identify "https://youtu.be/<video-id>"
+```
+
 ## ☁️ Deployment
 
 Infrastructure is provisioned on Azure using Bicep templates. See [`infra/`](infra/) for details.
