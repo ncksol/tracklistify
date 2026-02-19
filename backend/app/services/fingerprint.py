@@ -81,45 +81,39 @@ async def identify_segment(audio_path: str) -> dict[str, Any] | None:
     access_secret = credentials["access_secret"]
     acr_host = credentials["host"]
 
-    # Generate signature
+    # Generate signature components
     http_method = "POST"
     http_uri = "/v1/identify"
     data_type = "audio"
     signature_version = "1"
-    timestamp = str(int(time.time()))
-
-    # Build string to sign
-    string_to_sign = "\n".join(
-        [
-            http_method,
-            http_uri,
-            access_key,
-            data_type,
-            signature_version,
-            timestamp,
-        ]
-    )
-
-    # Create HMAC-SHA1 signature
-    signature = base64.b64encode(
-        hmac.new(
-            access_secret.encode("utf-8"),
-            string_to_sign.encode("utf-8"),
-            hashlib.sha1,
-        ).digest()
-    ).decode("utf-8")
 
     # Read audio file
     with open(audio_path, "rb") as f:
         audio_data = f.read()
+
+    # ACRCloud rate limit status codes
+    rate_limit_codes = {3001, 3015}
 
     # Make request with timeout and retry
     url = f"https://{acr_host}{http_uri}"
     timeout = aiohttp.ClientTimeout(total=30)
 
     result = None
-    for attempt in range(3):
+    for attempt in range(5):
         try:
+            # Regenerate timestamp + signature each attempt (stale timestamps get rejected)
+            timestamp = str(int(time.time()))
+            string_to_sign = "\n".join(
+                [http_method, http_uri, access_key, data_type, signature_version, timestamp]
+            )
+            signature = base64.b64encode(
+                hmac.new(
+                    access_secret.encode("utf-8"),
+                    string_to_sign.encode("utf-8"),
+                    hashlib.sha1,
+                ).digest()
+            ).decode("utf-8")
+
             form = aiohttp.FormData()
             form.add_field("sample", audio_data, filename="sample.wav")
             form.add_field("access_key", access_key)
@@ -134,9 +128,18 @@ async def identify_segment(audio_path: str) -> dict[str, Any] | None:
                 if response.status != 200:
                     return None
                 result = await response.json(content_type=None)
+
+            # Check for rate limiting before accepting result
+            status_code = result.get("status", {}).get("code", -1)
+            if status_code in rate_limit_codes:
+                if attempt < 4:
+                    await asyncio.sleep(2**attempt)
+                    continue
+                return None
+
             break
         except (aiohttp.ClientError, TimeoutError):
-            if attempt == 2:
+            if attempt == 4:
                 return None
             await asyncio.sleep(2**attempt)
 

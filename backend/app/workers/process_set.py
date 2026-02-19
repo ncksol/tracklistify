@@ -141,6 +141,8 @@ async def _batch_fingerprint_segments(
         """Fingerprint a single segment with semaphore limit."""
         async with semaphore:
             match = await identify_segment(segment["path"])
+            # Throttle to stay under ACRCloud QPS limits
+            await asyncio.sleep(0.3)
 
             if match:
                 return SegmentResult(
@@ -386,12 +388,12 @@ def process_dj_set(
             35,
         )
 
-        # Step 7: Fingerprint segments (batch with 10 concurrent requests)
+        # Step 7: Fingerprint segments (batch with 3 concurrent requests)
         _update_job_status(session, job_id, JobStatus.FINGERPRINTING, 40)
         _log_event(
             session,
             job_id,
-            f"Starting track identification ({len(segments)} segments, 10 parallel)...",
+            f"Starting track identification ({len(segments)} segments, 3 parallel)...",
             "FINGERPRINTING",
             40,
         )
@@ -403,7 +405,7 @@ def process_dj_set(
 
         for i in range(0, len(segments), chunk_size):
             chunk = segments[i : i + chunk_size]
-            chunk_results = asyncio.run(_batch_fingerprint_segments(chunk, max_concurrent=10))
+            chunk_results = asyncio.run(_batch_fingerprint_segments(chunk, max_concurrent=3))
             all_results.extend(chunk_results)
             tracks_found = sum(1 for r in all_results if r.title is not None)
             completed = len(all_results)
