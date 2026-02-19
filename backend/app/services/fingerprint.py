@@ -99,49 +99,52 @@ async def identify_segment(audio_path: str) -> dict[str, Any] | None:
     timeout = aiohttp.ClientTimeout(total=30)
 
     result = None
-    for attempt in range(5):
-        try:
-            # Regenerate timestamp + signature each attempt (stale timestamps get rejected)
-            timestamp = str(int(time.time()))
-            string_to_sign = "\n".join(
-                [http_method, http_uri, access_key, data_type, signature_version, timestamp]
-            )
-            signature = base64.b64encode(
-                hmac.new(
-                    access_secret.encode("utf-8"),
-                    string_to_sign.encode("utf-8"),
-                    hashlib.sha1,
-                ).digest()
-            ).decode("utf-8")
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        for attempt in range(5):
+            try:
+                # Regenerate timestamp + signature each attempt (stale timestamps get rejected)
+                timestamp = str(int(time.time()))
+                string_to_sign = "\n".join(
+                    [http_method, http_uri, access_key, data_type, signature_version, timestamp]
+                )
+                signature = base64.b64encode(
+                    hmac.new(
+                        access_secret.encode("utf-8"),
+                        string_to_sign.encode("utf-8"),
+                        hashlib.sha1,
+                    ).digest()
+                ).decode("utf-8")
 
-            form = aiohttp.FormData()
-            form.add_field("sample", audio_data, filename="sample.wav")
-            form.add_field("access_key", access_key)
-            form.add_field("data_type", data_type)
-            form.add_field("signature_version", signature_version)
-            form.add_field("signature", signature)
-            form.add_field("timestamp", timestamp)
-            async with (
-                aiohttp.ClientSession(timeout=timeout) as session,
-                session.post(url, data=form) as response,
-            ):
-                if response.status != 200:
+                form = aiohttp.FormData()
+                form.add_field("sample", audio_data, filename="sample.wav")
+                form.add_field("access_key", access_key)
+                form.add_field("data_type", data_type)
+                form.add_field("signature_version", signature_version)
+                form.add_field("signature", signature)
+                form.add_field("timestamp", timestamp)
+                async with session.post(url, data=form) as response:
+                    if response.status in {429, 500, 502, 503, 504}:
+                        if attempt < 4:
+                            await asyncio.sleep(2**attempt)
+                            continue
+                        return None
+                    if response.status != 200:
+                        return None
+                    result = await response.json(content_type=None)
+
+                # Check for rate limiting before accepting result
+                status_code = result.get("status", {}).get("code", -1)
+                if status_code in rate_limit_codes:
+                    if attempt < 4:
+                        await asyncio.sleep(2**attempt)
+                        continue
                     return None
-                result = await response.json(content_type=None)
 
-            # Check for rate limiting before accepting result
-            status_code = result.get("status", {}).get("code", -1)
-            if status_code in rate_limit_codes:
-                if attempt < 4:
-                    await asyncio.sleep(2**attempt)
-                    continue
-                return None
-
-            break
-        except (aiohttp.ClientError, TimeoutError):
-            if attempt == 4:
-                return None
-            await asyncio.sleep(2**attempt)
+                break
+            except (aiohttp.ClientError, TimeoutError):
+                if attempt == 4:
+                    return None
+                await asyncio.sleep(2**attempt)
 
     # Parse response
     if result is None or result.get("status", {}).get("code") != 0:
