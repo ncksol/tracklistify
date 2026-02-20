@@ -28,7 +28,7 @@ def sample_identify_result():
         ],
         "gaps": [{"start_ms": 6000, "end_ms": 12000}],
         "metadata": {
-            "url": "https://example.com/watch?v=abc123",
+            "url": "https://www.youtube.com/watch?v=abc123xyz01",
             "title": "Example Set",
             "duration": "00:30:00",
             "description": "Example description",
@@ -42,10 +42,10 @@ def sample_identify_result():
 def test_build_parser_parses_identify_defaults():
     parser = build_parser()
 
-    args = parser.parse_args(["identify", "https://example.com/set"])
+    args = parser.parse_args(["identify", "https://www.youtube.com/watch?v=abc123xyz01"])
 
     assert args.command == "identify"
-    assert args.url == "https://example.com/set"
+    assert args.url == "https://www.youtube.com/watch?v=abc123xyz01"
     assert args.cookie_file is None
     assert args.confidence_threshold == pytest.approx(0.5)
     assert args.format == "text"
@@ -62,6 +62,16 @@ def test_build_parser_rejects_invalid_url(capsys: pytest.CaptureFixture[str]):
     assert "URL must be an absolute http(s) URL." in capsys.readouterr().err
 
 
+def test_build_parser_rejects_non_youtube_url(capsys: pytest.CaptureFixture[str]):
+    parser = build_parser()
+
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(["identify", "https://example.com/set"])
+
+    assert exc_info.value.code == 2
+    assert "URL must be a valid YouTube watch/share URL." in capsys.readouterr().err
+
+
 def test_build_parser_rejects_missing_cookie_file(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
@@ -73,7 +83,7 @@ def test_build_parser_rejects_missing_cookie_file(
         parser.parse_args(
             [
                 "identify",
-                "https://example.com/set",
+                "https://www.youtube.com/watch?v=abc123xyz01",
                 "--cookie-file",
                 str(missing_cookie),
             ]
@@ -109,7 +119,7 @@ def test_render_identify_result_text_output_orders_tracks_and_gaps():
         ],
         "gaps": [{"start_ms": 6000, "end_ms": 12000}],
         "metadata": {
-            "url": "https://example.com/watch?v=abc123",
+            "url": "https://www.youtube.com/watch?v=abc123xyz01",
             "title": "",
             "duration": "",
             "description": "",
@@ -148,6 +158,7 @@ def test_write_identify_output_writes_json_file(
 def test_run_identify_orchestrates_services_with_mocks(tmp_path: Path):
     cookie_file = tmp_path / "cookies.txt"
     cookie_file.write_text("cookie-content", encoding="utf-8")
+    youtube_url = "https://www.youtube.com/watch?v=abc123xyz01"
     segments = [
         {"path": str(tmp_path / "segment_0000.wav"), "start_ms": 0, "end_ms": 6000},
         {"path": str(tmp_path / "segment_0001.wav"), "start_ms": 6000, "end_ms": 12000},
@@ -224,14 +235,14 @@ def test_run_identify_orchestrates_services_with_mocks(tmp_path: Path):
         mock_aggregate.return_value = (aggregated_tracks, unidentified_gaps)
 
         result = run_identify(
-            url="https://example.com/set",
+            url=youtube_url,
             cookie_file=cookie_file,
             confidence_threshold=0.7,
         )
 
-    mock_validate.assert_awaited_once_with("https://example.com/set", cookie_path=str(cookie_file))
+    mock_validate.assert_awaited_once_with(youtube_url, cookie_path=str(cookie_file))
     mock_download.assert_awaited_once()
-    assert mock_download.await_args.args[0] == "https://example.com/set"
+    assert mock_download.await_args.args[0] == youtube_url
     assert Path(mock_download.await_args.args[1]).name == "audio.wav"
     assert mock_download.await_args.kwargs["cookie_path"] == str(cookie_file)
 
@@ -275,7 +286,7 @@ def test_run_identify_orchestrates_services_with_mocks(tmp_path: Path):
     ]
     assert result["gaps"] == [{"start_ms": 6000, "end_ms": 12000}]
     assert result["metadata"] == {
-        "url": "https://example.com/set",
+        "url": "https://www.youtube.com/watch?v=abc123xyz01",
         "title": "Example Set",
         "duration": "00:30:00",
         "description": "Mocked set metadata",
@@ -298,7 +309,7 @@ def test_main_identify_calls_orchestrator_and_renderer(
         exit_code = main(
             [
                 "identify",
-                "https://example.com/set",
+                "https://www.youtube.com/watch?v=abc123xyz01",
                 "--confidence-threshold",
                 "0.75",
                 "--format",
@@ -310,7 +321,7 @@ def test_main_identify_calls_orchestrator_and_renderer(
 
     assert exit_code == 0
     mock_run.assert_called_once_with(
-        url="https://example.com/set",
+        url="https://www.youtube.com/watch?v=abc123xyz01",
         cookie_file=None,
         confidence_threshold=0.75,
     )
@@ -328,7 +339,7 @@ def test_main_exits_with_status_one_on_not_implemented(
         patch("app.cli.run_identify", side_effect=NotImplementedError("local mode unavailable")),
         pytest.raises(SystemExit) as exc_info,
     ):
-        main(["identify", "https://example.com/set"])
+        main(["identify", "https://www.youtube.com/watch?v=abc123xyz01"])
 
     assert exc_info.value.code == 1
     assert "local mode unavailable" in capsys.readouterr().err
@@ -350,7 +361,7 @@ def test_main_exits_with_status_one_on_runtime_errors(
         patch("app.cli.run_identify", side_effect=error),
         pytest.raises(SystemExit) as exc_info,
     ):
-        main(["identify", "https://example.com/set"])
+        main(["identify", "https://www.youtube.com/watch?v=abc123xyz01"])
 
     assert exc_info.value.code == 1
     assert expected in capsys.readouterr().err

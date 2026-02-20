@@ -8,7 +8,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from app.services.aggregator import SegmentResult, aggregate_results
 from app.services.audio import segment_audio
@@ -97,11 +97,22 @@ async def _batch_fingerprint_segments(
 
 
 def _http_url(value: str) -> str:
-    """Validate that the provided value is an absolute HTTP(S) URL."""
+    """Validate that the provided value is an absolute HTTP(S) YouTube URL."""
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         msg = "URL must be an absolute http(s) URL."
         raise argparse.ArgumentTypeError(msg)
+
+    host = parsed.netloc.lower()
+    query = parse_qs(parsed.query)
+    is_watch_url = host in {"youtube.com", "www.youtube.com", "m.youtube.com"} and (
+        parsed.path == "/watch" and bool(query.get("v"))
+    )
+    is_short_url = host in {"youtu.be", "www.youtu.be"} and bool(parsed.path.strip("/"))
+    if not (is_watch_url or is_short_url):
+        msg = "URL must be a valid YouTube watch/share URL."
+        raise argparse.ArgumentTypeError(msg)
+
     return value
 
 
