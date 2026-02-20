@@ -1,6 +1,7 @@
 """Tests for cookie upload behavior in jobs API and worker."""
 
 import os
+from datetime import datetime, timedelta
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -9,17 +10,18 @@ import httpx
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI, HTTPException, UploadFile
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
-from app.api.jobs import create_job
+from app.api.jobs import create_job, get_job_status
 from app.api.jobs import router as jobs_router
 from app.db import get_session
 from app.models.base import Base
 from app.models.job import Job, JobStatus
+from app.models.job_event import JobEvent
 
 
 @pytest_asyncio.fixture
@@ -289,3 +291,68 @@ def test_worker_deletes_stale_canonical_cookie(
 
     assert mock_probe.called
     assert mock_delete_canonical.called
+
+
+@pytest.mark.asyncio
+async def test_get_job_status_marks_stalled_segmenting_job_failed(async_session: AsyncSession):
+    """SEGMENTING job with stale events is marked FAILED with guidance."""
+    job = Job(
+        youtube_url="https://youtube.com/watch?v=stalled-segmenting",
+        status=JobStatus.SEGMENTING,
+        progress=30,
+        created_at=datetime.utcnow() - timedelta(hours=1),
+    )
+    async_session.add(job)
+    await async_session.commit()
+    await async_session.refresh(job)
+
+    async_session.add(
+        JobEvent(
+            job_id=job.id,
+            message="Starting audio segmentation (12s windows, 6s hop)...",
+            phase="SEGMENTING",
+            progress=30,
+            timestamp=datetime.utcnow() - timedelta(minutes=25),
+        )
+    )
+    await async_session.commit()
+
+    response = await get_job_status(job_id=job.id, session=async_session)
+    assert response.status == "FAILED"
+    assert response.error_message is not None
+    assert "stalled during segmentation" in response.error_message
+
+    result = await async_session.execute(
+        select(JobEvent).where(JobEvent.job_id == job.id).order_by(JobEvent.timestamp.desc())
+    )
+    latest_event = result.scalars().first()
+    assert latest_event is not None
+    assert latest_event.phase == "FAILED"
+
+
+@pytest.mark.asyncio
+async def test_get_job_status_keeps_recent_segmenting_job_active(async_session: AsyncSession):
+    """SEGMENTING job with recent events remains in-progress."""
+    job = Job(
+        youtube_url="https://youtube.com/watch?v=active-segmenting",
+        status=JobStatus.SEGMENTING,
+        progress=30,
+    )
+    async_session.add(job)
+    await async_session.commit()
+    await async_session.refresh(job)
+
+    async_session.add(
+        JobEvent(
+            job_id=job.id,
+            message="Starting audio segmentation (12s windows, 6s hop)...",
+            phase="SEGMENTING",
+            progress=30,
+            timestamp=datetime.utcnow() - timedelta(minutes=2),
+        )
+    )
+    await async_session.commit()
+
+    response = await get_job_status(job_id=job.id, session=async_session)
+    assert response.status == "SEGMENTING"
+    assert response.error_message is None

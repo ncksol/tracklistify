@@ -70,7 +70,9 @@ jobs:
           az containerapp update \
             --name tracklistify-celery-worker \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --image ${{ secrets.ACR_LOGIN_SERVER }}/tracklistify-backend:${{ steps.image-tag.outputs.sha }}
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/tracklistify-backend:${{ steps.image-tag.outputs.sha }} \
+            --cpu 0.5 \
+            --memory 1.0Gi
       
       - name: Deploy frontend to Azure Container Apps
         run: |

@@ -136,8 +136,8 @@ resource celeryWorker 'Microsoft.App/containerApps@2023-05-01' = {
           image: '${acr.properties.loginServer}/tracklistify-backend:${backendImageTag}'
           command: [ 'celery', '-A', 'app.workers.celery_app', 'worker', '--loglevel=info' ]
           resources: {
-            cpu: json('0.25')
-            memory: '0.5Gi'
+            cpu: json('0.5')
+            memory: '1.0Gi'
           }
           env: [
             {
