@@ -143,6 +143,9 @@ tracklistify identify "https://www.youtube.com/watch?v=VIDEO_ID" --format json -
 
 # use a cookies file if needed for video access
 tracklistify identify "https://www.youtube.com/watch?v=VIDEO_ID" --cookie-file ./cookies.txt
+
+# If YouTube bot checks block a request, CLI prints a cookie export guide
+# (using the "Get cookies.txt LOCALLY" browser extension).
 ```
 
 ### Run locally (development)

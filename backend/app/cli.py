@@ -33,6 +33,14 @@ IdentifyGap: TypeAlias = StandaloneGap  # noqa: UP040
 IdentifyMetadata: TypeAlias = StandaloneMetadata  # noqa: UP040
 IdentifyResult: TypeAlias = StandaloneIdentifyResult  # noqa: UP040
 
+_YOUTUBE_BOT_BLOCK_MARKERS = (
+    "sign in to confirm you're not a bot",
+    "sign in to confirm you’re not a bot",
+    "use --cookies-from-browser or --cookies",
+    "http error 429",
+    "too many requests",
+)
+
 
 def _emit_progress(phase: str, message: str) -> None:
     """Emit local CLI pipeline progress updates to stderr."""
@@ -44,6 +52,27 @@ def _is_segment_match(segment: SegmentResult, confidence_threshold: float) -> bo
     if segment.title is None or segment.artist is None:
         return False
     return not (segment.confidence is None or segment.confidence < confidence_threshold)
+
+
+def _format_cli_error_message(*, error: Exception, cookie_file: Path | None) -> str:
+    """Return a user-friendly CLI error message with bot-block guidance when applicable."""
+    error_text = str(error)
+    lowered = error_text.lower()
+    if any(marker in lowered for marker in _YOUTUBE_BOT_BLOCK_MARKERS):
+        if cookie_file is not None:
+            return (
+                "YouTube blocked this request even with the provided cookies.\n"
+                "Your cookies file may be stale. Export fresh youtube.com cookies.txt and retry."
+            )
+        return (
+            "YouTube blocked this request as bot-like traffic.\n"
+            "Retry with --cookie-file using a youtube.com cookies.txt export:\n"
+            "1) Install the 'Get cookies.txt LOCALLY' browser extension\n"
+            "2) Sign in on youtube.com and export cookies.txt\n"
+            "3) Re-run: tracklistify identify <url> --cookie-file ./cookies.txt"
+        )
+
+    return f"Error: {error}"
 
 
 async def _batch_fingerprint_segments(
@@ -326,7 +355,10 @@ def main(argv: list[str] | None = None) -> int:
     except NotImplementedError as exc:
         parser.exit(status=1, message=f"{exc}\n")
     except (ValueError, RuntimeError, FileNotFoundError) as exc:
-        parser.exit(status=1, message=f"Error: {exc}\n")
+        parser.exit(
+            status=1,
+            message=f"{_format_cli_error_message(error=exc, cookie_file=args.cookie_file)}\n",
+        )
 
     return 0
 
