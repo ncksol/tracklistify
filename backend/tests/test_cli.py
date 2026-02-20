@@ -194,10 +194,10 @@ def test_run_identify_orchestrates_services_with_mocks(tmp_path: Path):
             segment_index=1,
             start_ms=6000,
             end_ms=12000,
-            title=None,
+            title="Partial Match",
             artist=None,
             album=None,
-            confidence=None,
+            confidence=0.99,
         ),
         SegmentResult(
             segment_index=2,
@@ -272,6 +272,7 @@ def test_run_identify_orchestrates_services_with_mocks(tmp_path: Path):
     assert mock_batch.await_args.args[0] == segments
     assert mock_batch.await_args.kwargs["max_concurrent"] == 3
     assert mock_batch.await_args.kwargs["throttle_seconds"] == 0.3
+    assert mock_batch.await_args.kwargs["confidence_threshold"] == 0.7
     assert callable(mock_batch.await_args.kwargs["on_progress"])
 
     mock_aggregate.assert_called_once_with(fingerprint_results, confidence_threshold=0.7)
@@ -319,6 +320,7 @@ def test_main_identify_calls_orchestrator_and_renderer(
     output_path = tmp_path / "cli-output.json"
 
     with (
+        patch("app.cli.load_dotenv") as mock_load_dotenv,
         patch("app.cli.run_identify", return_value=sample_identify_result) as mock_run,
         patch("app.cli._render_identify_result") as mock_render,
     ):
@@ -336,6 +338,7 @@ def test_main_identify_calls_orchestrator_and_renderer(
         )
 
     assert exit_code == 0
+    mock_load_dotenv.assert_called_once_with()
     mock_run.assert_called_once_with(
         url="https://www.youtube.com/watch?v=abc123xyz01",
         cookie_file=None,

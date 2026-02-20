@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
 from urllib.parse import parse_qs, urlparse
 
+from dotenv import load_dotenv
+
 from app.services.aggregator import SegmentResult, aggregate_results
 from app.services.audio import segment_audio
 from app.services.fingerprint import identify_segment
@@ -37,11 +39,19 @@ def _emit_progress(phase: str, message: str) -> None:
     print(f"[{phase}] {message}", file=sys.stderr, flush=True)
 
 
+def _is_segment_match(segment: SegmentResult, confidence_threshold: float) -> bool:
+    """Apply the same valid-match criteria used by result aggregation."""
+    if segment.title is None or segment.artist is None:
+        return False
+    return not (segment.confidence is None or segment.confidence < confidence_threshold)
+
+
 async def _batch_fingerprint_segments(
     segments: list[dict[str, Any]],
     *,
     max_concurrent: int = 3,
     throttle_seconds: float = 0.3,
+    confidence_threshold: float = 0.50,
     on_progress: Callable[[int, int, int], None] | None = None,
 ) -> list[SegmentResult]:
     """Fingerprint segments locally with bounded concurrency and throttle."""
@@ -83,7 +93,7 @@ async def _batch_fingerprint_segments(
 
         async with progress_lock:
             completed_segments += 1
-            if result.title is not None:
+            if _is_segment_match(result, confidence_threshold):
                 tracks_found += 1
             if on_progress and (
                 completed_segments % progress_step == 0 or completed_segments == total_segments
@@ -227,6 +237,7 @@ def run_identify(
                 segments,
                 max_concurrent=3,
                 throttle_seconds=0.3,
+                confidence_threshold=confidence_threshold,
                 on_progress=_fingerprint_progress,
             )
         )
@@ -256,7 +267,9 @@ def run_identify(
         }
         for gap in unidentified_gaps
     ]
-    matched_segments = sum(1 for result in fingerprint_results if result.title is not None)
+    matched_segments = sum(
+        1 for result in fingerprint_results if _is_segment_match(result, confidence_threshold)
+    )
     _emit_progress(
         "COMPLETE",
         f"Finished {len(fingerprint_results)} segments with {matched_segments} matches",
@@ -293,6 +306,7 @@ def _render_identify_result(
 
 def main(argv: list[str] | None = None) -> int:
     """Parse CLI arguments and execute the selected command."""
+    load_dotenv()
     parser = build_parser()
     args = parser.parse_args(argv)
 
