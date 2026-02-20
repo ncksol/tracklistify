@@ -118,6 +118,30 @@ tracklistify identify "https://www.youtube.com/watch?v=VIDEO_ID"
 tracklistify identify "https://www.youtube.com/watch?v=VIDEO_ID" --format json --output ./tracklist.json
 ```
 
+**CLI usage**
+
+```bash
+# show available commands/options
+tracklistify --help
+tracklistify identify --help
+
+# command shape
+tracklistify identify "<youtube_url>" \
+  [--cookie-file PATH] \
+  [--confidence-threshold FLOAT] \
+  [--format text|json] \
+  [--output PATH]
+
+# write text output to a file
+tracklistify identify "https://www.youtube.com/watch?v=VIDEO_ID" --output ./tracklist.txt
+
+# write JSON output to a file
+tracklistify identify "https://www.youtube.com/watch?v=VIDEO_ID" --format json --output ./tracklist.json
+
+# use a cookies file if needed for video access
+tracklistify identify "https://www.youtube.com/watch?v=VIDEO_ID" --cookie-file ./cookies.txt
+```
+
 ### Run locally (development)
 
 ```bash
