@@ -314,8 +314,7 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, RuntimeError) as exc:
         parser.exit(status=1, message=f"Error: {exc}\n")
 
-    parser.error(f"Unknown command: {args.command}")
-    return 2
+    return 0
 
 
 if __name__ == "__main__":

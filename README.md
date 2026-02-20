@@ -98,6 +98,7 @@ Use this mode to generate a local tracklist directly from a YouTube URL.
 - Python 3.12+
 - `ffmpeg` and `ffprobe` on your `PATH`
 - `yt-dlp` on your `PATH`
+- Node.js on your `PATH` (used by `yt-dlp --js-runtimes node`)
 - ACRCloud Broadcast Monitoring credentials exported as environment variables:
   - `ACR_ACCESS_KEY`
   - `ACR_ACCESS_SECRET`
