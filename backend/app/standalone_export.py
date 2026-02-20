@@ -79,7 +79,7 @@ def _render_as_text(result: StandaloneIdentifyResult) -> str:
             title = track["title"] or "Unknown Title"
             lines.append(f"{track['position']:02d}. [{timestamp}] {artist} - {title}")
         else:
-            gap = cast("StandaloneGap", item)
+            gap = item
             start_ts = ms_to_timestamp(gap["start_ms"])
             end_ts = ms_to_timestamp(gap["end_ms"])
             lines.append(f"-- [{start_ts} - {end_ts}] Unidentified")
