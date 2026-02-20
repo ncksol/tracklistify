@@ -132,6 +132,9 @@ tracklistify identify "<youtube_url>" \
   [--format text|json] \
   [--output PATH]
 
+# JSON output matches the web export schema:
+# job_id, title, url, duration_seconds, tracks[]
+
 # write text output to a file
 tracklistify identify "https://www.youtube.com/watch?v=VIDEO_ID" --output ./tracklist.txt
 

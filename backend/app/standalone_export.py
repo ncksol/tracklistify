@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from typing import TYPE_CHECKING, TypedDict, cast
+from uuid import NAMESPACE_URL, uuid5
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -50,6 +51,27 @@ class StandaloneIdentifyResult(TypedDict):
     metadata: StandaloneMetadata
 
 
+class WebExportTrack(TypedDict):
+    """Web JSON export track payload."""
+
+    position: int
+    start_time_ms: int
+    end_time_ms: int | None
+    artist: str | None
+    title: str | None
+    confidence_score: float | None
+
+
+class WebExportResponse(TypedDict):
+    """Web JSON export response payload."""
+
+    job_id: str
+    title: str | None
+    url: str
+    duration_seconds: int | None
+    tracks: list[WebExportTrack]
+
+
 def ms_to_timestamp(ms: int) -> str:
     """Convert milliseconds to HH:MM:SS timestamp format."""
     total_seconds = ms // 1000
@@ -87,8 +109,47 @@ def _render_as_text(result: StandaloneIdentifyResult) -> str:
     return "\n".join(lines)
 
 
+def _duration_to_seconds(duration: str) -> int | None:
+    parts = duration.split(":")
+    try:
+        if len(parts) == 3:
+            hours, minutes, seconds = map(int, parts)
+            return hours * 3600 + minutes * 60 + seconds
+        if len(parts) == 2:
+            minutes, seconds = map(int, parts)
+            return minutes * 60 + seconds
+    except ValueError:
+        return None
+
+    return None
+
+
+def _render_web_export_json(result: StandaloneIdentifyResult) -> WebExportResponse:
+    metadata = result["metadata"]
+    tracks = sorted(result["tracks"], key=lambda track: track["start_ms"])
+    export_tracks: list[WebExportTrack] = [
+        {
+            "position": track["position"],
+            "start_time_ms": track["start_ms"],
+            "end_time_ms": track["end_ms"],
+            "artist": track["artist"],
+            "title": track["title"],
+            "confidence_score": track["avg_confidence"],
+        }
+        for track in tracks
+    ]
+
+    return {
+        "job_id": str(uuid5(NAMESPACE_URL, metadata["url"])),
+        "title": metadata["title"] or None,
+        "url": metadata["url"],
+        "duration_seconds": _duration_to_seconds(metadata["duration"]),
+        "tracks": export_tracks,
+    }
+
+
 def _render_as_json(result: StandaloneIdentifyResult) -> str:
-    return json.dumps(result, indent=2)
+    return json.dumps(_render_web_export_json(result), indent=2)
 
 
 def render_identify_result(*, result: StandaloneIdentifyResult, output_format: str) -> str:

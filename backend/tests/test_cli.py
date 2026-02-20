@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+from uuid import NAMESPACE_URL, uuid5
 
 import pytest
 
@@ -152,7 +153,22 @@ def test_write_identify_output_writes_json_file(
 
     output_text = output_path.read_text(encoding="utf-8")
     assert output_text.endswith("\n")
-    assert json.loads(output_text) == sample_identify_result
+    assert json.loads(output_text) == {
+        "job_id": str(uuid5(NAMESPACE_URL, "https://www.youtube.com/watch?v=abc123xyz01")),
+        "title": "Example Set",
+        "url": "https://www.youtube.com/watch?v=abc123xyz01",
+        "duration_seconds": 1800,
+        "tracks": [
+            {
+                "position": 1,
+                "start_time_ms": 0,
+                "end_time_ms": 6000,
+                "artist": "DJ Example",
+                "title": "Intro Track",
+                "confidence_score": 0.91,
+            }
+        ],
+    }
 
 
 def test_run_identify_orchestrates_services_with_mocks(tmp_path: Path):
