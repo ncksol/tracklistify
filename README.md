@@ -89,6 +89,34 @@ docker-compose up
 
 Open [http://localhost:3000](http://localhost:3000) and paste a YouTube URL.
 
+### Run standalone CLI (no backend/frontend)
+
+Use this mode to generate a local tracklist directly from a YouTube URL.
+
+**Prerequisites**
+
+- Python 3.12+
+- `ffmpeg` and `ffprobe` on your `PATH`
+- `yt-dlp` on your `PATH`
+- ACRCloud Broadcast Monitoring credentials exported as environment variables:
+  - `ACR_ACCESS_KEY`
+  - `ACR_ACCESS_SECRET`
+  - `ACR_HOST`
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -e .
+
+# Export ACRCloud credentials in your shell before running:
+# export ACR_ACCESS_KEY=...
+# export ACR_ACCESS_SECRET=...
+# export ACR_HOST=identify-eu-west-1.acrcloud.com
+
+tracklistify identify "https://www.youtube.com/watch?v=VIDEO_ID"
+tracklistify identify "https://www.youtube.com/watch?v=VIDEO_ID" --format json --output ./tracklist.json
+```
+
 ### Run locally (development)
 
 ```bash
