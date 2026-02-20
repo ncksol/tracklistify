@@ -148,7 +148,6 @@ def test_write_identify_output_writes_json_file(
 def test_run_identify_orchestrates_services_with_mocks(tmp_path: Path):
     cookie_file = tmp_path / "cookies.txt"
     cookie_file.write_text("cookie-content", encoding="utf-8")
-    output_path = tmp_path / "result.json"
     segments = [
         {"path": str(tmp_path / "segment_0000.wav"), "start_ms": 0, "end_ms": 6000},
         {"path": str(tmp_path / "segment_0001.wav"), "start_ms": 6000, "end_ms": 12000},
@@ -228,8 +227,6 @@ def test_run_identify_orchestrates_services_with_mocks(tmp_path: Path):
             url="https://example.com/set",
             cookie_file=cookie_file,
             confidence_threshold=0.7,
-            output_format="json",
-            output_path=output_path,
         )
 
     mock_validate.assert_awaited_once_with("https://example.com/set", cookie_path=str(cookie_file))
@@ -251,7 +248,7 @@ def test_run_identify_orchestrates_services_with_mocks(tmp_path: Path):
     assert callable(mock_batch.await_args.kwargs["on_progress"])
 
     mock_aggregate.assert_called_once_with(fingerprint_results, confidence_threshold=0.7)
-    progress_phases = [call.args[0] for call in mock_progress.call_args_list]
+    progress_phases = [progress_call.args[0] for progress_call in mock_progress.call_args_list]
     assert "COMPLETE" in progress_phases
 
     assert result["tracks"] == [
@@ -316,8 +313,6 @@ def test_main_identify_calls_orchestrator_and_renderer(
         url="https://example.com/set",
         cookie_file=None,
         confidence_threshold=0.75,
-        output_format="json",
-        output_path=output_path,
     )
     mock_render.assert_called_once_with(
         result=sample_identify_result,
@@ -337,3 +332,25 @@ def test_main_exits_with_status_one_on_not_implemented(
 
     assert exc_info.value.code == 1
     assert "local mode unavailable" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (ValueError("invalid url"), "Error: invalid url"),
+        (RuntimeError("pipeline failed"), "Error: pipeline failed"),
+    ],
+)
+def test_main_exits_with_status_one_on_runtime_errors(
+    capsys: pytest.CaptureFixture[str],
+    error: Exception,
+    expected: str,
+):
+    with (
+        patch("app.cli.run_identify", side_effect=error),
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        main(["identify", "https://example.com/set"])
+
+    assert exc_info.value.code == 1
+    assert expected in capsys.readouterr().err

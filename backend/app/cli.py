@@ -7,57 +7,29 @@ import asyncio
 import sys
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypeAlias
 from urllib.parse import urlparse
 
 from app.services.aggregator import SegmentResult, aggregate_results
 from app.services.audio import segment_audio
 from app.services.fingerprint import identify_segment
 from app.services.youtube import download_audio, validate_url
-from app.standalone_export import write_identify_output
+from app.standalone_export import (
+    StandaloneGap,
+    StandaloneIdentifyResult,
+    StandaloneMetadata,
+    StandaloneTrack,
+    write_identify_output,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-class IdentifyTrack(TypedDict):
-    """Serialized aggregated track payload."""
-
-    position: int
-    start_ms: int
-    end_ms: int
-    title: str | None
-    artist: str | None
-    album: str | None
-    avg_confidence: float
-    is_transition: bool
-
-
-class IdentifyGap(TypedDict):
-    """Serialized unidentified gap payload."""
-
-    start_ms: int
-    end_ms: int
-
-
-class IdentifyMetadata(TypedDict):
-    """Top-level metadata payload for identify results."""
-
-    url: str
-    title: str
-    duration: str
-    description: str
-    confidence_threshold: float
-    segment_count: int
-    matched_segment_count: int
-
-
-class IdentifyResult(TypedDict):
-    """Structured identify command result."""
-
-    tracks: list[IdentifyTrack]
-    gaps: list[IdentifyGap]
-    metadata: IdentifyMetadata
+IdentifyTrack: TypeAlias = StandaloneTrack  # noqa: UP040
+IdentifyGap: TypeAlias = StandaloneGap  # noqa: UP040
+IdentifyMetadata: TypeAlias = StandaloneMetadata  # noqa: UP040
+IdentifyResult: TypeAlias = StandaloneIdentifyResult  # noqa: UP040
 
 
 def _emit_progress(phase: str, message: str) -> None:
@@ -211,11 +183,8 @@ def run_identify(
     url: str,
     cookie_file: Path | None,
     confidence_threshold: float,
-    output_format: str,
-    output_path: Path | None,
 ) -> IdentifyResult:
     """Run standalone identify pipeline in-process and return structured results."""
-    _ = (output_format, output_path)
     cookie_path = str(cookie_file) if cookie_file is not None else None
 
     with tempfile.TemporaryDirectory(prefix="tracklistify_cli_") as workspace:
@@ -322,8 +291,6 @@ def main(argv: list[str] | None = None) -> int:
                 url=args.url,
                 cookie_file=args.cookie_file,
                 confidence_threshold=args.confidence_threshold,
-                output_format=args.format,
-                output_path=args.output,
             )
             _render_identify_result(
                 result=result,
@@ -333,6 +300,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     except NotImplementedError as exc:
         parser.exit(status=1, message=f"{exc}\n")
+    except (ValueError, RuntimeError) as exc:
+        parser.exit(status=1, message=f"Error: {exc}\n")
 
     parser.error(f"Unknown command: {args.command}")
     return 2
