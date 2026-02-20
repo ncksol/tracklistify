@@ -31,6 +31,11 @@ logger = logging.getLogger(__name__)
 _submission_timestamps: list[datetime] = []
 _MAX_SUBMISSIONS_PER_HOUR = 5
 _RATE_LIMIT_WINDOW = timedelta(hours=1)
+_SEGMENTING_STALL_TIMEOUT = timedelta(minutes=20)
+_SEGMENTING_STALL_MESSAGE = (
+    "Processing stalled during segmentation (worker may have restarted due memory pressure). "
+    "Please retry this job."
+)
 
 
 def _check_rate_limit() -> None:
@@ -60,6 +65,37 @@ def _check_rate_limit() -> None:
 
     # Record this submission
     _submission_timestamps.append(now)
+
+
+async def _fail_stalled_segmenting_job(*, job: Job, session: AsyncSession) -> Job:
+    """Mark stuck SEGMENTING jobs as FAILED with a user-facing error message."""
+    if job.status != JobStatus.SEGMENTING:
+        return job
+
+    last_event_stmt = select(func.max(JobEvent.timestamp)).where(JobEvent.job_id == job.id)
+    last_event_result = await session.execute(last_event_stmt)
+    last_event_at = last_event_result.scalar_one_or_none()
+
+    if last_event_at is None:
+        return job
+
+    if datetime.utcnow() - last_event_at < _SEGMENTING_STALL_TIMEOUT:
+        return job
+
+    job.status = JobStatus.FAILED
+    job.progress = 0
+    job.error_message = _SEGMENTING_STALL_MESSAGE
+    session.add(
+        JobEvent(
+            job_id=job.id,
+            message=_SEGMENTING_STALL_MESSAGE,
+            phase="FAILED",
+            progress=0,
+        )
+    )
+    await session.commit()
+    await session.refresh(job)
+    return job
 
 
 # Request schemas
@@ -506,6 +542,8 @@ async def get_job_status(
 
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    job = await _fail_stalled_segmenting_job(job=job, session=session)
 
     return JobResponse(
         id=job.id,
