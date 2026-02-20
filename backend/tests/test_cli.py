@@ -395,3 +395,50 @@ def test_main_exits_with_status_one_on_runtime_errors(
 
     assert exc_info.value.code == 1
     assert expected in capsys.readouterr().err
+
+
+def test_main_shows_cookie_guide_on_youtube_bot_block(capsys: pytest.CaptureFixture[str]):
+    bot_block_error = RuntimeError(
+        "yt-dlp failed: Sign in to confirm you're not a bot. "
+        "Use --cookies-from-browser or --cookies for the authentication."
+    )
+    with (
+        patch("app.cli.run_identify", side_effect=bot_block_error),
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        main(["identify", "https://www.youtube.com/watch?v=abc123xyz01"])
+
+    stderr = capsys.readouterr().err
+    assert exc_info.value.code == 1
+    assert "YouTube blocked this request as bot-like traffic." in stderr
+    assert "Get cookies.txt LOCALLY" in stderr
+    assert "--cookie-file ./cookies.txt" in stderr
+
+
+def test_main_suggests_refresh_when_cookies_are_stale(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+):
+    cookie_file = tmp_path / "cookies.txt"
+    cookie_file.write_text("stale-cookie-data", encoding="utf-8")
+    bot_block_error = RuntimeError(
+        "yt-dlp failed: Sign in to confirm you're not a bot. "
+        "Use --cookies-from-browser or --cookies for the authentication."
+    )
+    with (
+        patch("app.cli.run_identify", side_effect=bot_block_error),
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        main(
+            [
+                "identify",
+                "https://www.youtube.com/watch?v=abc123xyz01",
+                "--cookie-file",
+                str(cookie_file),
+            ]
+        )
+
+    stderr = capsys.readouterr().err
+    assert exc_info.value.code == 1
+    assert "provided cookies" in stderr
+    assert "may be stale" in stderr
