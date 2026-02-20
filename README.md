@@ -89,6 +89,62 @@ docker-compose up
 
 Open [http://localhost:3000](http://localhost:3000) and paste a YouTube URL.
 
+### Run standalone CLI (no backend/frontend)
+
+Use this mode to generate a local tracklist directly from a YouTube URL.
+
+**Prerequisites**
+
+- Python 3.12+
+- `ffmpeg` and `ffprobe` on your `PATH`
+- `yt-dlp` on your `PATH`
+- Node.js on your `PATH` (used by `yt-dlp --js-runtimes node`)
+- ACRCloud Broadcast Monitoring credentials exported as environment variables:
+  - `ACR_ACCESS_KEY`
+  - `ACR_ACCESS_SECRET`
+  - `ACR_HOST`
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -e .
+
+# Export ACRCloud credentials in your shell before running:
+# export ACR_ACCESS_KEY=...
+# export ACR_ACCESS_SECRET=...
+# export ACR_HOST=identify-eu-west-1.acrcloud.com
+
+tracklistify identify "https://www.youtube.com/watch?v=VIDEO_ID"
+tracklistify identify "https://www.youtube.com/watch?v=VIDEO_ID" --format json --output ./tracklist.json
+```
+
+**CLI usage**
+
+```bash
+# show available commands/options
+tracklistify --help
+tracklistify identify --help
+
+# command shape
+tracklistify identify "<youtube_url>" \
+  [--cookie-file PATH] \
+  [--confidence-threshold FLOAT] \
+  [--format text|json] \
+  [--output PATH]
+
+# JSON output matches the web export schema:
+# job_id, title, url, duration_seconds, tracks[]
+
+# write text output to a file
+tracklistify identify "https://www.youtube.com/watch?v=VIDEO_ID" --output ./tracklist.txt
+
+# write JSON output to a file
+tracklistify identify "https://www.youtube.com/watch?v=VIDEO_ID" --format json --output ./tracklist.json
+
+# use a cookies file if needed for video access
+tracklistify identify "https://www.youtube.com/watch?v=VIDEO_ID" --cookie-file ./cookies.txt
+```
+
 ### Run locally (development)
 
 ```bash
