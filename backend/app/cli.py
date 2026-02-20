@@ -115,7 +115,7 @@ def _http_url(value: str) -> str:
 
     host = parsed.netloc.lower()
     query = parse_qs(parsed.query)
-    is_watch_url = host in {"youtube.com", "www.youtube.com", "m.youtube.com"} and (
+    is_watch_url = host in {"youtube.com", "www.youtube.com"} and (
         parsed.path == "/watch" and bool(query.get("v"))
     )
     is_short_url = host in {"youtu.be", "www.youtu.be"} and bool(parsed.path.strip("/"))
@@ -325,7 +325,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     except NotImplementedError as exc:
         parser.exit(status=1, message=f"{exc}\n")
-    except (ValueError, RuntimeError) as exc:
+    except (ValueError, RuntimeError, FileNotFoundError) as exc:
         parser.exit(status=1, message=f"Error: {exc}\n")
 
     return 0

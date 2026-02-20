@@ -73,6 +73,16 @@ def test_build_parser_rejects_non_youtube_url(capsys: pytest.CaptureFixture[str]
     assert "URL must be a valid YouTube watch/share URL." in capsys.readouterr().err
 
 
+def test_build_parser_rejects_mobile_youtube_url(capsys: pytest.CaptureFixture[str]):
+    parser = build_parser()
+
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(["identify", "https://m.youtube.com/watch?v=abc123xyz01"])
+
+    assert exc_info.value.code == 2
+    assert "URL must be a valid YouTube watch/share URL." in capsys.readouterr().err
+
+
 def test_build_parser_rejects_missing_cookie_file(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
@@ -369,6 +379,7 @@ def test_main_exits_with_status_one_on_not_implemented(
     [
         (ValueError("invalid url"), "Error: invalid url"),
         (RuntimeError("pipeline failed"), "Error: pipeline failed"),
+        (FileNotFoundError("ffmpeg not found"), "Error: ffmpeg not found"),
     ],
 )
 def test_main_exits_with_status_one_on_runtime_errors(
