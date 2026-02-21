@@ -33,7 +33,8 @@ _MAX_SUBMISSIONS_PER_HOUR = 5
 _RATE_LIMIT_WINDOW = timedelta(hours=1)
 _SEGMENTING_STALL_TIMEOUT = timedelta(minutes=20)
 _SEGMENTING_STALL_MESSAGE = (
-    "Processing stalled during segmentation (worker may have restarted due memory pressure). "
+    "Processing stalled during segmentation (no progress heartbeat for 20 minutes; "
+    "worker may have restarted due memory pressure). "
     "Please retry this job."
 )
 

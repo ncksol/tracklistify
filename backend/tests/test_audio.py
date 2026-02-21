@@ -203,6 +203,27 @@ class TestSegmentAudio:
                 # Verify path contains correct filename
                 assert segments[0]["path"].endswith("segment_000.wav")
 
+    def test_calls_on_segment_created_callback(self, temp_audio_path, temp_output_dir):
+        """Test that segment_audio reports per-segment progress via callback."""
+        callback_calls: list[tuple[int, int]] = []
+
+        with patch("app.services.audio.get_audio_duration", return_value=30.0):
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+
+            with patch("subprocess.run", return_value=mock_result):
+                segment_audio(
+                    temp_audio_path,
+                    temp_output_dir,
+                    window_seconds=12,
+                    hop_seconds=6,
+                    on_segment_created=lambda completed, total: callback_calls.append(
+                        (completed, total)
+                    ),
+                )
+
+        assert callback_calls == [(1, 5), (2, 5), (3, 5), (4, 5), (5, 5)]
+
     def test_segment_filenames_are_zero_padded(self, temp_audio_path, temp_output_dir):
         """Test that segment filenames are zero-padded correctly."""
         # Create enough segments to test padding (60s / 6s hop = 10 segments)

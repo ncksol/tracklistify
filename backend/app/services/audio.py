@@ -1,6 +1,7 @@
 """FFmpeg audio segmentation service for sliding window fingerprinting."""
 
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,7 @@ def segment_audio(
     output_dir: str,
     window_seconds: int = 12,
     hop_seconds: int = 6,
+    on_segment_created: Callable[[int, int], None] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Split an audio file into overlapping segments using FFmpeg.
@@ -65,6 +67,8 @@ def segment_audio(
         output_dir: Directory to save segment files
         window_seconds: Window size in seconds (default: 12)
         hop_seconds: Hop size in seconds (default: 6, 50% overlap)
+        on_segment_created: Optional callback called as segments are created with
+            (completed_segments, total_segments)
 
     Returns:
         List of segment metadata dicts with keys:
@@ -86,6 +90,15 @@ def segment_audio(
 
     # Get total duration
     total_duration = get_audio_duration(input_path)
+
+    total_segments = 0
+    preview_start = 0.0
+    while preview_start < total_duration:
+        preview_end = min(preview_start + window_seconds, total_duration)
+        if preview_end - preview_start < 1.0:
+            break
+        total_segments += 1
+        preview_start += hop_seconds
 
     # Calculate segment boundaries
     segments: list[dict[str, Any]] = []
@@ -150,6 +163,9 @@ def segment_audio(
                 "end_ms": int(end_seconds * 1000),
             }
         )
+
+        if on_segment_created:
+            on_segment_created(len(segments), total_segments)
 
         # Move to next segment
         segment_index += 1

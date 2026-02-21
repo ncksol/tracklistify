@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, delete
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.websocket import notify_progress
@@ -373,11 +373,32 @@ def process_dj_set(
         )
 
         segments_dir = temp_dir / "segments"
+        last_segmenting_heartbeat = datetime.utcnow()
+
+        def _on_segment_created(completed_segments: int, total_segments: int) -> None:
+            nonlocal last_segmenting_heartbeat
+            now = datetime.utcnow()
+            if completed_segments < total_segments and now - last_segmenting_heartbeat < timedelta(
+                minutes=1
+            ):
+                return
+            last_segmenting_heartbeat = now
+            heartbeat_progress = 30 + min(int((completed_segments / max(total_segments, 1)) * 5), 4)
+            _update_job_status(session, job_id, JobStatus.SEGMENTING, heartbeat_progress)
+            _log_event(
+                session,
+                job_id,
+                f"Segmenting audio... {completed_segments}/{total_segments} windows processed",
+                "SEGMENTING",
+                heartbeat_progress,
+            )
+
         segments = segment_audio(
             input_path=str(audio_path),
             output_dir=str(segments_dir),
             window_seconds=12,
             hop_seconds=6,
+            on_segment_created=_on_segment_created,
         )
         _update_job_status(session, job_id, JobStatus.SEGMENTING, 35)
         _log_event(
@@ -461,6 +482,9 @@ def process_dj_set(
         from uuid import UUID
 
         job_uuid = UUID(job_id) if isinstance(job_id, str) else job_id
+        # Task can be redelivered after worker loss; replace prior rows for idempotent retries.
+        session.execute(delete(Track).where(Track.job_id == job_uuid))
+        session.execute(delete(UnidentifiedSegment).where(UnidentifiedSegment.job_id == job_uuid))
         for aggregated_track in aggregated_tracks:
             track = Track(
                 job_id=job_uuid,

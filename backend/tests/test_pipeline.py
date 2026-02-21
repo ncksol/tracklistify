@@ -268,6 +268,8 @@ class TestPipelineIntegration:
         assert mock_upload.called
         assert mock_validate.called
         assert mock_segment.called
+        on_segment_created = mock_segment.call_args.kwargs.get("on_segment_created")
+        assert callable(on_segment_created)
         assert mock_identify.call_count == 4  # Called for each segment
         assert mock_delete.called
 
@@ -307,6 +309,125 @@ class TestPipelineIntegration:
         # Verify no tracks were created
         tracks = in_memory_db.query(Track).filter(Track.job_id == job_id).all()
         assert len(tracks) == 0
+
+    @patch("app.workers.process_set._log_event")
+    @patch("app.workers.process_set.delete_audio", new_callable=AsyncMock)
+    @patch("app.workers.process_set.notify_progress", new_callable=AsyncMock)
+    @patch("app.workers.process_set.identify_segment", new_callable=AsyncMock)
+    @patch("app.workers.process_set.segment_audio")
+    @patch("app.workers.process_set.validate_url", new_callable=AsyncMock)
+    @patch("app.workers.process_set.upload_audio", new_callable=AsyncMock)
+    @patch("app.workers.process_set.download_audio", new_callable=AsyncMock)
+    @patch("app.workers.process_set._get_sync_session")
+    def test_process_dj_set_emits_segmenting_heartbeat_events(
+        self,
+        mock_session_maker: MagicMock,
+        mock_download: AsyncMock,
+        mock_upload: AsyncMock,
+        mock_validate: AsyncMock,
+        mock_segment: MagicMock,
+        mock_identify: AsyncMock,
+        mock_notify: AsyncMock,
+        mock_delete: AsyncMock,
+        mock_log_event: MagicMock,
+        in_memory_db: Session,
+        test_job: Job,
+        mock_youtube_metadata: dict,
+        mock_segments: list[dict],
+        mock_fingerprint_results: list[dict | None],
+    ):
+        """Long segmenting runs emit heartbeat events consumed by stall detection."""
+        mock_session_maker.return_value = in_memory_db
+        job_id = test_job.id
+
+        mock_validate.return_value = mock_youtube_metadata
+        mock_identify.side_effect = mock_fingerprint_results
+
+        def segment_with_heartbeat(*args, **kwargs):
+            callback = kwargs["on_segment_created"]
+            callback(1, 4)
+            callback(4, 4)
+            return mock_segments
+
+        mock_segment.side_effect = segment_with_heartbeat
+
+        process_dj_set(str(job_id), test_job.youtube_url)
+
+        assert any(
+            "windows processed" in call.args[2]
+            for call in mock_log_event.call_args_list
+            if len(call.args) >= 3
+        )
+
+    @patch("app.workers.process_set._log_event")
+    @patch("app.workers.process_set.delete_audio", new_callable=AsyncMock)
+    @patch("app.workers.process_set.notify_progress", new_callable=AsyncMock)
+    @patch("app.workers.process_set.identify_segment", new_callable=AsyncMock)
+    @patch("app.workers.process_set.segment_audio")
+    @patch("app.workers.process_set.validate_url", new_callable=AsyncMock)
+    @patch("app.workers.process_set.upload_audio", new_callable=AsyncMock)
+    @patch("app.workers.process_set.download_audio", new_callable=AsyncMock)
+    @patch("app.workers.process_set._get_sync_session")
+    def test_process_dj_set_replaces_existing_rows_on_retry(
+        self,
+        mock_session_maker: MagicMock,
+        mock_download: AsyncMock,
+        mock_upload: AsyncMock,
+        mock_validate: AsyncMock,
+        mock_segment: MagicMock,
+        mock_identify: AsyncMock,
+        mock_notify: AsyncMock,
+        mock_delete: AsyncMock,
+        mock_log_event: MagicMock,
+        in_memory_db: Session,
+        test_job: Job,
+        mock_youtube_metadata: dict,
+        mock_segments: list[dict],
+        mock_fingerprint_results: list[dict | None],
+    ):
+        """Task retries should overwrite prior rows instead of duplicating them."""
+        mock_session_maker.return_value = in_memory_db
+        job_id = test_job.id
+        job_uuid = test_job.id
+
+        # Seed old rows that should be replaced by the retried task run.
+        in_memory_db.add(
+            Track(
+                job_id=job_uuid,
+                position=1,
+                start_time_ms=0,
+                end_time_ms=1000,
+                title="Old Track",
+                artist="Old Artist",
+                album=None,
+                confidence_score=0.1,
+                is_transition=False,
+                is_manual_edit=False,
+            )
+        )
+        in_memory_db.add(
+            UnidentifiedSegment(
+                job_id=job_uuid,
+                start_time_ms=1000,
+                end_time_ms=2000,
+                notes="old gap",
+            )
+        )
+        in_memory_db.commit()
+
+        mock_validate.return_value = mock_youtube_metadata
+        mock_segment.return_value = mock_segments
+        mock_identify.side_effect = mock_fingerprint_results
+
+        process_dj_set(str(job_id), test_job.youtube_url)
+        in_memory_db.expire_all()
+
+        tracks = in_memory_db.query(Track).filter(Track.job_id == job_id).order_by(Track.position).all()
+        gaps = in_memory_db.query(UnidentifiedSegment).filter(UnidentifiedSegment.job_id == job_id).all()
+
+        assert len(tracks) == 3
+        assert [track.title for track in tracks] == ["Track A", "Track B", "Track C"]
+        assert len(gaps) == 0
 
 
 class TestBatchFingerprinting:
