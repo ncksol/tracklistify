@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import logging
 import os
 import time
 from typing import Any
@@ -12,6 +13,7 @@ import aiohttp
 
 # Module-level cache for ACRCloud credentials
 _acr_credentials: dict[str, str] | None = None
+logger = logging.getLogger(__name__)
 
 
 def _get_acr_credentials() -> dict[str, str]:
@@ -86,6 +88,7 @@ async def identify_segment(audio_path: str) -> dict[str, Any] | None:
     http_uri = "/v1/identify"
     data_type = "audio"
     signature_version = "1"
+    segment_name = os.path.basename(audio_path)
 
     # Read audio file
     with open(audio_path, "rb") as f:
@@ -124,16 +127,34 @@ async def identify_segment(audio_path: str) -> dict[str, Any] | None:
                 form.add_field("timestamp", timestamp)
                 async with session.post(url, data=form) as response:
                     if response.status in {429, 500, 502, 503, 504}:
+                        logger.warning(
+                            "[%s] ACRCloud HTTP status %s (attempt %s/5)",
+                            segment_name,
+                            response.status,
+                            attempt + 1,
+                        )
                         if attempt < 4:
                             await asyncio.sleep(2**attempt)
                             continue
                         return None
                     if response.status != 200:
+                        logger.warning(
+                            "[%s] ACRCloud non-200 HTTP status %s",
+                            segment_name,
+                            response.status,
+                        )
                         return None
                     result = await response.json(content_type=None)
 
                 # Check for rate limiting before accepting result
                 status_code = result.get("status", {}).get("code", -1)
+                status_message = result.get("status", {}).get("msg", "")
+                logger.info(
+                    "[%s] ACRCloud status code=%s msg=%s",
+                    segment_name,
+                    status_code,
+                    status_message,
+                )
                 if status_code in rate_limit_codes:
                     if attempt < 4:
                         await asyncio.sleep(2**attempt)
@@ -141,7 +162,13 @@ async def identify_segment(audio_path: str) -> dict[str, Any] | None:
                     return None
 
                 break
-            except (aiohttp.ClientError, TimeoutError):
+            except (aiohttp.ClientError, TimeoutError) as e:
+                logger.warning(
+                    "[%s] ACRCloud request error %s (attempt %s/5)",
+                    segment_name,
+                    type(e).__name__,
+                    attempt + 1,
+                )
                 if attempt == 4:
                     return None
                 await asyncio.sleep(2**attempt)
