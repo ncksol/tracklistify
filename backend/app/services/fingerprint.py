@@ -7,13 +7,156 @@ import hmac
 import logging
 import os
 import time
-from typing import Any
+from collections import deque
+from threading import Lock
+from typing import Any, Literal
 
 import aiohttp
 
 # Module-level cache for ACRCloud credentials
 _acr_credentials: dict[str, str] | None = None
 logger = logging.getLogger(__name__)
+_RATE_LIMIT_WINDOW_SECONDS = 1.0
+_LOCAL_RATE_LIMIT_TIMES: deque[float] = deque()
+_LOCAL_RATE_LIMIT_LOCK = Lock()
+_redis_limiter: "_RedisQpsLimiter | None" = None
+_redis_limiter_init_failed = False
+_redis_url_cache: str | None = None
+_redis_url_resolved = False
+
+
+def _get_positive_int_env(name: str, default: int) -> int:
+    """Read positive int env var and fall back to default on invalid values."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return default
+    return parsed if parsed > 0 else default
+
+
+_ACR_WEB_QPS_LIMIT = _get_positive_int_env("ACR_WEB_QPS_LIMIT", 2)
+_ACR_LOCAL_QPS_LIMIT = _get_positive_int_env("ACR_LOCAL_QPS_LIMIT", 2)
+
+
+class _RedisQpsLimiter:
+    """Simple Redis fixed-window QPS limiter shared across workers."""
+
+    def __init__(self, redis_url: str, qps_limit: int) -> None:
+        from redis import Redis
+
+        self._client: Any = Redis.from_url(redis_url)
+        self._qps_limit = qps_limit
+
+    def acquire_blocking(self) -> None:
+        """Block until a slot is available in the current global QPS window."""
+        while True:
+            bucket = int(time.time())
+            key = f"tracklistify:acr:qps:{bucket}"
+            count = self._client.incr(key)
+            if count == 1:
+                self._client.expire(key, 2)
+            if count <= self._qps_limit:
+                return
+            sleep_for = max((bucket + 1) - time.time(), 0.01)
+            time.sleep(sleep_for)
+
+
+def _resolve_redis_url() -> str | None:
+    """Resolve Redis URL once for shared fingerprint rate limiting."""
+    global _redis_url_cache, _redis_url_resolved  # noqa: PLW0603
+    if _redis_url_resolved:
+        return _redis_url_cache
+
+    _redis_url_resolved = True
+    redis_url = os.getenv("REDIS_URL")
+    if redis_url:
+        _redis_url_cache = redis_url
+        return _redis_url_cache
+
+    host = os.getenv("REDIS_HOST")
+    if not host:
+        _redis_url_cache = None
+        return None
+
+    vault_url = os.getenv("KEY_VAULT_URI")
+    if vault_url:
+        try:
+            from azure.identity import DefaultAzureCredential
+            from azure.keyvault.secrets import SecretClient
+
+            credential = DefaultAzureCredential()
+            client = SecretClient(vault_url=vault_url, credential=credential)
+            redis_key = client.get_secret("redis-primary-key").value
+            _redis_url_cache = f"rediss://:{redis_key}@{host}:6380/0?ssl_cert_reqs=required"
+            return _redis_url_cache
+        except Exception as e:
+            logger.warning("Failed to resolve Redis URL from Key Vault: %s", type(e).__name__)
+            _redis_url_cache = None
+            return None
+
+    _redis_url_cache = f"redis://{host}:6379/0"
+    return _redis_url_cache
+
+
+def _get_redis_limiter() -> _RedisQpsLimiter | None:
+    """Get the shared Redis limiter used by web processors."""
+    global _redis_limiter, _redis_limiter_init_failed  # noqa: PLW0603
+
+    if _redis_limiter is not None:
+        return _redis_limiter
+    if _redis_limiter_init_failed:
+        return None
+
+    redis_url = _resolve_redis_url()
+    if redis_url is None:
+        return None
+
+    try:
+        _redis_limiter = _RedisQpsLimiter(redis_url=redis_url, qps_limit=_ACR_WEB_QPS_LIMIT)
+    except Exception as e:
+        logger.warning("Redis limiter initialization failed: %s", type(e).__name__)
+        _redis_limiter_init_failed = True
+        return None
+
+    return _redis_limiter
+
+
+async def _acquire_local_qps_slot(qps_limit: int) -> None:
+    """Acquire an in-process QPS slot."""
+    while True:
+        with _LOCAL_RATE_LIMIT_LOCK:
+            now = time.monotonic()
+            cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
+            while _LOCAL_RATE_LIMIT_TIMES and _LOCAL_RATE_LIMIT_TIMES[0] <= cutoff:
+                _LOCAL_RATE_LIMIT_TIMES.popleft()
+
+            if len(_LOCAL_RATE_LIMIT_TIMES) < qps_limit:
+                _LOCAL_RATE_LIMIT_TIMES.append(now)
+                return
+
+            wait_seconds = (_LOCAL_RATE_LIMIT_TIMES[0] + _RATE_LIMIT_WINDOW_SECONDS) - now
+
+        await asyncio.sleep(max(wait_seconds, 0.01))
+
+
+async def _acquire_qps_slot(limiter_mode: Literal["local", "redis"]) -> None:
+    """Acquire a QPS slot from redis (web) or local fallback (CLI)."""
+    if limiter_mode == "redis":
+        redis_limiter = _get_redis_limiter()
+        if redis_limiter is not None:
+            try:
+                await asyncio.to_thread(redis_limiter.acquire_blocking)
+                return
+            except Exception as e:
+                logger.warning("Redis limiter acquire failed: %s", type(e).__name__)
+
+        await _acquire_local_qps_slot(_ACR_WEB_QPS_LIMIT)
+        return
+
+    await _acquire_local_qps_slot(_ACR_LOCAL_QPS_LIMIT)
 
 
 def _get_acr_credentials() -> dict[str, str]:
@@ -67,12 +210,17 @@ def _get_acr_credentials() -> dict[str, str]:
     raise ValueError("ACRCloud credentials not found in environment variables or Key Vault")
 
 
-async def identify_segment(audio_path: str) -> dict[str, Any] | None:
+async def identify_segment(
+    audio_path: str,
+    *,
+    limiter_mode: Literal["local", "redis"] = "local",
+) -> dict[str, Any] | None:
     """
     Identify an audio segment using ACRCloud's fingerprinting API.
 
     Args:
         audio_path: Path to the audio file to identify
+        limiter_mode: Rate limiter mode ("redis" for web workers, "local" for CLI)
 
     Returns:
         Dict with keys: title, artist, album, confidence_score, play_offset_ms
@@ -125,6 +273,7 @@ async def identify_segment(audio_path: str) -> dict[str, Any] | None:
                 form.add_field("signature_version", signature_version)
                 form.add_field("signature", signature)
                 form.add_field("timestamp", timestamp)
+                await _acquire_qps_slot(limiter_mode)
                 async with session.post(url, data=form) as response:
                     if response.status in {429, 500, 502, 503, 504}:
                         logger.warning(
