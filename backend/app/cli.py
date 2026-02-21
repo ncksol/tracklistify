@@ -95,7 +95,7 @@ async def _batch_fingerprint_segments(
         nonlocal completed_segments, tracks_found
 
         async with semaphore:
-            match = await identify_segment(str(segment["path"]))
+            match = await identify_segment(str(segment["path"]), limiter_mode="local")
             await asyncio.sleep(throttle_seconds)
 
         result: SegmentResult

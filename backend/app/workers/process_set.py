@@ -140,7 +140,7 @@ async def _batch_fingerprint_segments(
     async def fingerprint_with_semaphore(segment: dict[str, Any], index: int) -> SegmentResult:
         """Fingerprint a single segment with semaphore limit."""
         async with semaphore:
-            match = await identify_segment(segment["path"])
+            match = await identify_segment(segment["path"], limiter_mode="redis")
             # Throttle to stay under ACRCloud QPS limits
             await asyncio.sleep(0.3)
 

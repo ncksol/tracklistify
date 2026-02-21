@@ -7,7 +7,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 import pytest
 
-from app.cli import build_parser, main, run_identify
+from app.cli import _batch_fingerprint_segments, build_parser, main, run_identify
 from app.services.aggregator import AggregatedTrack, SegmentResult, UnidentifiedGap
 from app.standalone_export import render_identify_result, write_identify_output
 
@@ -321,6 +321,21 @@ def test_run_identify_orchestrates_services_with_mocks(tmp_path: Path):
         "segment_count": 3,
         "matched_segment_count": 2,
     }
+
+
+@pytest.mark.asyncio
+async def test_batch_fingerprint_uses_local_limiter_mode(tmp_path: Path):
+    segments = [
+        {"path": str(tmp_path / "segment_0000.wav"), "start_ms": 0, "end_ms": 6000},
+        {"path": str(tmp_path / "segment_0001.wav"), "start_ms": 6000, "end_ms": 12000},
+    ]
+
+    with patch("app.cli.identify_segment", new_callable=AsyncMock) as mock_identify:
+        mock_identify.return_value = None
+        await _batch_fingerprint_segments(segments, max_concurrent=1, throttle_seconds=0.0)
+
+    assert mock_identify.call_count == 2
+    assert all(call.kwargs.get("limiter_mode") == "local" for call in mock_identify.await_args_list)
 
 
 def test_main_identify_calls_orchestrator_and_renderer(

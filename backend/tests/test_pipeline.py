@@ -478,6 +478,10 @@ class TestBatchFingerprinting:
             
             # Verify identify_segment was called 4 times
             assert mock_identify.call_count == 4
+            assert all(
+                call.kwargs.get("limiter_mode") == "redis"
+                for call in mock_identify.await_args_list
+            )
 
     @pytest.mark.asyncio
     async def test_batch_fingerprint_respects_concurrency_limit(self, mock_segments: list[dict]):
@@ -485,9 +489,10 @@ class TestBatchFingerprinting:
         concurrent_calls = []
         max_concurrent_seen = 0
         
-        async def mock_identify_with_tracking(path: str):
+        async def mock_identify_with_tracking(path: str, *, limiter_mode: str):
             """Track concurrent calls."""
             nonlocal max_concurrent_seen
+            assert limiter_mode == "redis"
             concurrent_calls.append(path)
             current_concurrent = len(concurrent_calls)
             max_concurrent_seen = max(max_concurrent_seen, current_concurrent)
